@@ -221,6 +221,14 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 
 <!-- ══════════════ CSV PANEL ══════════════ -->
 <div class="panel" id="panel_csv">
+  <div class="sh">VibraAnalyzer Session — from any tester</div>
+  <div class="file-slots" style="margin-bottom:20px">
+    <div class="file-slot"><input type="file" accept=".csv" onchange="loadSessionFile(this.files[0])">
+      <div class="slot-icon">📦</div>
+      <div><div class="slot-title">Session CSV (vibra_*.csv)</div>
+        <div class="slot-sub">Exported by this app — re-analyzes instantly with full charts, map &amp; events</div></div>
+      <div class="slot-badge badge-ok">1 FILE</div></div>
+  </div>
   <div class="sh">MATLAB Export (legacy path)</div>
   <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:16px;line-height:1.9">
     <span style="color:var(--accent)">writetimetable(Acceleration, 'Acceleration.csv')</span><br>
@@ -319,6 +327,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 
   <div class="sh">Road Surface Quality</div>
   <div class="road-score" id="roadScore"></div>
+  <div id="trafficSection"></div>
   <div class="sh">RMS Per Axis (Orientation-Corrected)</div>
   <div class="axis-grid" id="axisGrid"></div>
   <div class="sh" style="margin-bottom:12px">Detected Events <span id="evCount" style="color:var(--text3)"></span></div>
@@ -1029,6 +1038,73 @@ function reapplyDetection(){
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  DRIVING & TRAFFIC ANALYTICS — from GPS speed + position
+// ══════════════════════════════════════════════════════════════════════════════
+function haversine(la1,lo1,la2,lo2){
+  var R=6371000,r=Math.PI/180;
+  var dLa=(la2-la1)*r,dLo=(lo2-lo1)*r;
+  var a=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dLo/2)*Math.sin(dLo/2);
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(a)));
+}
+function computeTraffic(t,speed,lat,lon){
+  if(!speed||speed.length<50)return null;
+  var n=speed.length;
+  var dur=t[n-1]-t[0],fs=n/Math.max(dur,1);
+  // Smooth GPS speed before differentiating — 1 Hz GPS is steppy
+  var sm=lowPass(speed,0.3,fs);
+  // Distance from position (glitch-capped) or integrated speed as fallback
+  var dist=0;
+  if(lat&&lon){
+    var step=Math.max(1,Math.round(fs)); // ~1 s steps
+    for(var i=step;i<n;i+=step){
+      if(isFinite(lat[i])&&isFinite(lat[i-step])&&lat[i]!==0&&lat[i-step]!==0){
+        var d=haversine(lat[i-step],lon[i-step],lat[i],lon[i]);
+        if(d<100)dist+=d; // reject GPS jumps
+      }
+    }
+  } else {
+    for(var i2=1;i2<n;i2++)dist+=Math.max(0,speed[i2])*Math.min(t[i2]-t[i2-1],1);
+  }
+  // Moving / stopped / congestion
+  var MOVE=1.0; // m/s
+  var movTime=0,stopTime=0,congTime=0,maxSp=0,movSum=0,movCnt=0;
+  var stops=0,inStop=false,stopStart=0;
+  for(var j=1;j<n;j++){
+    var dt=Math.min(t[j]-t[j-1],1);
+    if(sm[j]>maxSp)maxSp=sm[j];
+    if(sm[j]>MOVE){
+      movTime+=dt;movSum+=sm[j];movCnt++;
+      if(sm[j]<20/3.6)congTime+=dt;
+      if(inStop){if(t[j]-stopStart>3)stops++;inStop=false;}
+    } else {
+      stopTime+=dt;
+      if(!inStop){inStop=true;stopStart=t[j];}
+    }
+  }
+  if(inStop&&t[n-1]-stopStart>3)stops++;
+  // Harsh braking / acceleration from smoothed speed derivative
+  var harshBrake=0,harshAcc=0,lastEvt=-99;
+  var dw=Math.max(1,Math.round(fs*0.8)); // 0.8 s derivative window
+  for(var k=dw;k<n;k++){
+    var dts=t[k]-t[k-dw];if(dts<=0)continue;
+    var a2=(sm[k]-sm[k-dw])/dts;
+    if(t[k]-lastEvt<3)continue;
+    if(a2<-3.0){harshBrake++;lastEvt=t[k];}
+    else if(a2>2.5){harshAcc++;lastEvt=t[k];}
+  }
+  return{
+    distKm:dist/1000,
+    avgMovKmh:movCnt?movSum/movCnt*3.6:0,
+    maxKmh:maxSp*3.6,
+    stops:stops,
+    idlePct:Math.round(stopTime/Math.max(movTime+stopTime,1)*100),
+    congPct:movTime>10?Math.round(congTime/movTime*100):0,
+    harshBrake:harshBrake,harshAcc:harshAcc,
+    durMin:dur/60
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  HEALTH / RENDERING
 // ══════════════════════════════════════════════════════════════════════════════
 var HEALTH=[
@@ -1219,7 +1295,28 @@ function renderResults(){
       options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},
         scales:{x:{ticks:{color:'#636366',font:{family:'DM Mono',size:9}},grid:{color:'#3a3a3c'}},y:{ticks:{color:'#636366',font:{family:'DM Mono',size:9}},grid:{color:'#3a3a3c'}}}}
     });
-  } else {scb.innerHTML='<div style="padding:24px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--text3)">No speed data — enable GPS during recording for the speed correlation chart</div>';}
+  } else {scb.innerHTML='<div style="padding:24px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--text3)">'+(G.speed?'Not enough speed variation for the speed correlation chart (short or single-speed drive)':'No speed data — enable GPS during recording for the speed correlation chart')+'</div>';}
+  // Driving & traffic analytics
+  var traffic=computeTraffic(G.t,G.speed,G.lat,G.lon);
+  G.traffic=traffic;
+  var ts=document.getElementById('trafficSection');
+  if(traffic){
+    ts.innerHTML='<div class="sh">Driving &amp; Traffic</div>'+
+      '<div class="stat-row">'+
+      '<div class="stat-card"><div class="stat-val">'+traffic.distKm.toFixed(1)+'</div><div class="stat-key">Distance km</div></div>'+
+      '<div class="stat-card"><div class="stat-val">'+traffic.avgMovKmh.toFixed(0)+'</div><div class="stat-key">Avg Moving km/h</div></div>'+
+      '<div class="stat-card"><div class="stat-val">'+traffic.maxKmh.toFixed(0)+'</div><div class="stat-key">Max km/h</div></div>'+
+      '<div class="stat-card"><div class="stat-val">'+traffic.stops+'</div><div class="stat-key">Stops</div></div>'+
+      '</div>'+
+      '<div class="stat-row">'+
+      '<div class="stat-card '+(traffic.idlePct>40?'warn':'')+'"><div class="stat-val">'+traffic.idlePct+'%</div><div class="stat-key">Idle Time</div></div>'+
+      '<div class="stat-card '+(traffic.congPct>40?'warn':'')+'"><div class="stat-val">'+traffic.congPct+'%</div><div class="stat-key">Congestion &lt;20 km/h</div></div>'+
+      '<div class="stat-card '+(traffic.harshBrake>2?'alert':traffic.harshBrake>0?'warn':'good')+'"><div class="stat-val">'+traffic.harshBrake+'</div><div class="stat-key">Harsh Brakes</div></div>'+
+      '<div class="stat-card '+(traffic.harshAcc>2?'alert':traffic.harshAcc>0?'warn':'good')+'"><div class="stat-val">'+traffic.harshAcc+'</div><div class="stat-key">Harsh Accel</div></div>'+
+      '</div>';
+  } else {
+    ts.innerHTML='';
+  }
   // Road score
   var rscores=roughness.map(function(s){return s.rms;});
   var goodPct=Math.round(roughness.filter(function(s){return s.rms<2;}).length/roughness.length*100);
@@ -1307,6 +1404,13 @@ function buildDiagnostic(stats,events,roughness){
   if(dt>0)items.push({c:'#ffd60a',t:dt+' periodic-impact pattern'+(dt>1?'s':'')+" classified as Botts' dots / rumble strips — regular spacing with low displacement per impact, excluded from pothole/bump counts."});
   if(bridges.length>0)items.push({c:'#0a84ff',t:bridges.length+' bridge or elevation change'+(bridges.length>1?'s':'')+' detected via GPS altitude analysis.'});
   if(tunnels.length>0)items.push({c:'#a855f7',t:tunnels.length+' possible tunnel or GPS obstruction'+(tunnels.length>1?'s':'')+' detected via GPS dropout analysis.'});
+  if(G&&G.traffic){
+    var tr=G.traffic;
+    if(tr.harshBrake>2)items.push({c:'#ff453a',t:tr.harshBrake+' harsh braking events (>3 m/s² decel) over '+tr.distKm.toFixed(1)+' km — either traffic conditions or driving style; frequent hard braking accelerates brake, tire, and suspension wear.'});
+    if(tr.congPct>40)items.push({c:'#ff9f0a',t:tr.congPct+'% of moving time below 20 km/h — heavy congestion on this route. Stop-and-go duty increases engine-mount and drivetrain stress relative to distance covered.'});
+    else if(tr.idlePct>40)items.push({c:'#ff9f0a',t:tr.idlePct+'% of the session was stationary — mostly idle/queueing. Vibration readings while stationary reflect engine condition directly (no road input).'});
+    if(tr.distKm>1&&tr.stops>0)items.push({c:'#636366',t:'Trip profile: '+tr.distKm.toFixed(1)+' km · '+tr.durMin.toFixed(0)+' min · '+tr.stops+' stops · avg '+tr.avgMovKmh.toFixed(0)+' km/h while moving.'});
+  }
   return'<div class="diag-card"><div class="diag-header"><div class="diag-icon">'+icon+'</div><div><div class="diag-title">'+title+'</div><div class="diag-sub">'+sub+'</div></div></div>'+
     '<div class="diag-items">'+items.map(function(it){return'<div class="diag-item"><div class="diag-bullet" style="background:'+it.c+'"></div><div class="diag-text">'+it.t+'</div></div>';}).join('')+'</div></div>';
 }
@@ -1316,7 +1420,17 @@ function buildDiagnostic(stats,events,roughness){
 // ══════════════════════════════════════════════════════════════════════════════
 function downloadSessionCSV(){
   if(!G){alert('Nothing to export');return;}
-  var lines=['t_s,acc_x,acc_y,acc_z,clean_x,clean_y,clean_z'+(G.lat?',lat,lon,speed_ms,alt_m':'')];
+  var meta=['# VibraAnalyzer Session v9',
+    '# car='+(document.getElementById('mCar').value||''),
+    '# year='+(document.getElementById('mYear').value||''),
+    '# mileage='+(document.getElementById('mMileage').value||''),
+    '# condition='+(document.getElementById('mCondition').value||''),
+    '# operator='+(document.getElementById('mOperator').value||''),
+    '# notes='+(document.getElementById('mNotes').value||''),
+    '# date='+new Date().toISOString(),
+    '# method='+G.method,
+    '# samples='+G.t.length];
+  var lines=meta.concat(['t_s,acc_x,acc_y,acc_z,clean_x,clean_y,clean_z'+(G.lat?',lat,lon,speed_ms,alt_m':'')]);
   for(var i=0;i<G.t.length;i++){
     var row=[G.t[i].toFixed(3),G.rawX[i].toFixed(4),G.rawY[i].toFixed(4),G.rawZ[i].toFixed(4),
              G.cax[i].toFixed(4),G.cay[i].toFixed(4),G.caz[i].toFixed(4)];
@@ -1326,9 +1440,71 @@ function downloadSessionCSV(){
   var blob=new Blob([lines.join('\n')],{type:'text/csv'});
   var a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download='vibra_session_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.csv';
+  var carTag=(document.getElementById('mCar').value||'session').replace(/[^A-Za-z0-9]+/g,'_');
+  a.download='vibra_'+carTag+'_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.csv';
   a.click();
   setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
+}
+
+// ── Session import — re-analyze a file exported by this app ──────────────────
+function loadSessionFile(file){
+  if(!file)return;
+  var r=new FileReader();
+  r.onload=function(e){
+    try{
+      var text=e.target.result;
+      var lines=text.split('\n').map(function(l){return l.trim();}).filter(Boolean);
+      var meta={};
+      var di=0;
+      while(di<lines.length&&lines[di].charAt(0)==='#'){
+        var mm=lines[di].slice(1).trim().match(/^(\w+)=(.*)$/);
+        if(mm)meta[mm[1]]=mm[2];
+        di++;
+      }
+      if(di>=lines.length){alert('File is empty');return;}
+      var headers=lines[di].split(',').map(function(h){return h.trim();});
+      var col={};headers.forEach(function(h,i){col[h]=i;});
+      if(col.t_s===undefined||col.clean_x===undefined){
+        alert('Not a VibraAnalyzer session file — expected columns t_s, acc_x…, clean_x…\nUse the three MATLAB slots below for MATLAB exports.');return;
+      }
+      var hasGps=col.lat!==undefined;
+      var t=[],rawX=[],rawY=[],rawZ=[],cax=[],cay=[],caz=[],lat=hasGps?[]:null,lon=hasGps?[]:null,speed=hasGps?[]:null,alt=hasGps?[]:null;
+      for(var i=di+1;i<lines.length;i++){
+        var v=lines[i].split(',');
+        if(v.length<7)continue;
+        t.push(+v[col.t_s]);rawX.push(+v[col.acc_x]);rawY.push(+v[col.acc_y]);rawZ.push(+v[col.acc_z]);
+        cax.push(+v[col.clean_x]);cay.push(+v[col.clean_y]);caz.push(+v[col.clean_z]);
+        if(hasGps){lat.push(+v[col.lat]);lon.push(+v[col.lon]);speed.push(+v[col.speed_ms]);alt.push(+v[col.alt_m]);}
+      }
+      if(t.length<50){alert('Session too short ('+t.length+' rows)');return;}
+      // Restore session metadata into the form (so results header shows the tester's car)
+      if(meta.car!==undefined)document.getElementById('mCar').value=meta.car;
+      if(meta.year!==undefined)document.getElementById('mYear').value=meta.year;
+      if(meta.mileage!==undefined)document.getElementById('mMileage').value=meta.mileage;
+      if(meta.operator!==undefined)document.getElementById('mOperator').value=meta.operator;
+      if(meta.notes!==undefined)document.getElementById('mNotes').value=meta.notes;
+      if(meta.condition)document.getElementById('mCondition').value=meta.condition;
+      var posPts=null;
+      if(hasGps){
+        posPts=[];var pl=null;
+        for(var k=0;k<lat.length;k++){
+          if(isFinite(lat[k])&&isFinite(lon[k])&&lat[k]!==0){
+            if(!pl||Math.abs(lat[k]-pl.lat)+Math.abs(lon[k]-pl.lon)>0.000005){pl={lat:lat[k],lon:lon[k]};posPts.push(pl);}
+          }
+        }
+        if(posPts.length<2)posPts=null;
+      }
+      document.getElementById('panel_csv').style.display='none';
+      document.getElementById('panel_rec').style.display='none';
+      document.getElementById('tabs').style.display='none';
+      setProgress(30,'Re-analyzing imported session...');
+      finishAnalysis({cax:cax,cay:cay,caz:caz,rawX:rawX,rawY:rawY,rawZ:rawZ,
+        t:t,speed:speed,alt:alt,lat:lat,lon:lon,posPts:posPts,
+        corrPct:100,method:(meta.method||'imported session'),
+        accN:t.length,gyrN:t.length,tsOk:true,source:'IMPORT'});
+    }catch(err){alert('Import failed: '+err.message);}
+  };
+  r.readAsText(file);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
