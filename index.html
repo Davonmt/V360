@@ -223,9 +223,9 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 <div class="panel" id="panel_csv">
   <div class="sh">VibraAnalyzer Session — from any tester</div>
   <div class="file-slots" style="margin-bottom:20px">
-    <div class="file-slot"><input type="file" accept=".csv" onchange="loadSessionFile(this.files[0])">
+    <div class="file-slot"><input type="file" accept=".csv,.json" onchange="loadSessionFile(this.files[0])">
       <div class="slot-icon">📦</div>
-      <div><div class="slot-title">Session CSV (vibra_*.csv)</div>
+      <div><div class="slot-title">Session file (vibra_*.csv / .json)</div>
         <div class="slot-sub">Exported by this app — re-analyzes instantly with full charts, map &amp; events</div></div>
       <div class="slot-badge badge-ok">1 FILE</div></div>
   </div>
@@ -334,7 +334,8 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   <div class="event-list" id="eventList"></div>
   <div class="sh" style="margin-bottom:12px">Diagnostic Summary</div>
   <div id="diagCard"></div>
-  <button class="btn btn-reset" onclick="downloadSessionCSV()">⬇ Export recorded data (CSV)</button>
+  <button class="btn btn-reset" onclick="downloadSessionCSV()">⬇ Export data — CSV (Excel)</button>
+  <button class="btn btn-reset" onclick="downloadSessionJSON()">⬇ Export session — JSON (data + analysis)</button>
   <button class="btn btn-reset" onclick="resetAll()">↩ New Session</button>
 </div>
 </div>
@@ -362,7 +363,9 @@ function showTab(k){
 // ══════════════════════════════════════════════════════════════════════════════
 //  RECORDER — replaces MATLAB Mobile entirely
 // ══════════════════════════════════════════════════════════════════════════════
-var R={on:false,t0:0,samples:[],gps:[],wakeLock:null,geoId:null,hasClean:false,cleanCount:0,uiTimer:null,watchdog:null};
+var R={on:false,t0:0,T:[],GX:[],GY:[],GZ:[],CX:[],CY:[],CZ:[],RX:[],RY:[],RZ:[],gps:[],
+  wakeLock:null,geoId:null,cleanCount:0,rawEvents:0,gaps:[],lastT:-1,uiTimer:null,watchdog:null,
+  bin:{i:-1,n:0,gx:0,gy:0,gz:0,cx:0,cy:0,cz:0,rx:0,ry:0,rz:0,cn:0}};
 
 // ── Environment diagnosis ─────────────────────────────────────────────────────
 function envIssues(){
@@ -457,7 +460,9 @@ async function toggleRecording(){
 }
 
 function startRecording(){
-  R.on=true;R.samples=[];R.gps=[];R.hasClean=false;R.cleanCount=0;
+  R.on=true;R.T=[];R.GX=[];R.GY=[];R.GZ=[];R.CX=[];R.CY=[];R.CZ=[];R.RX=[];R.RY=[];R.RZ=[];
+  R.gps=[];R.cleanCount=0;R.rawEvents=0;R.gaps=[];R.lastT=-1;
+  R.bin={i:-1,n:0,gx:0,gy:0,gz:0,cx:0,cy:0,cz:0,rx:0,ry:0,rz:0,cn:0};
   R.t0=performance.now()/1000;
   document.getElementById('btnAnalyzeRec').disabled=true;
   var btn=document.getElementById('recBtn');
@@ -477,9 +482,9 @@ function startRecording(){
   R.uiTimer=setInterval(updateRecUI,250);
   // Watchdog: if no real data after 4 s, the sensors are blocked — stop and explain
   R.watchdog=setTimeout(function(){
-    if(R.on&&R.samples.length<10){
+    if(R.on&&R.rawEvents<10){
       stopRecording();
-      recWarn('⚠ Sensors are not delivering data ('+R.samples.length+' events in 4 s).<br><br>'+
+      recWarn('⚠ Sensors are not delivering data ('+R.rawEvents+' events in 4 s).<br><br>'+
         'Most likely cause: this page is open inside an app preview or embedded browser, not the real browser. '+
         'Open the file in <b>Safari</b> (iPhone) or <b>Chrome</b> (Android) directly, via an <b>https://</b> address.<br><br>'+
         'Run the <b>🔍 TEST SENSORS</b> check at the top — it will show exactly which part is blocked.');
@@ -493,21 +498,35 @@ function reacquireWakeLock(){
   }
 }
 
+// Sensor events (60–200 Hz) are averaged into fixed 40 ms bins (25 Hz) on the
+// fly, so an hour-long drive stays small in memory instead of storing every
+// raw event. Gaps > 2 s (calls, app switches, screen lock) are logged.
 function onMotion(e){
   if(!R.on)return;
   var t=performance.now()/1000-R.t0;
+  R.rawEvents++;
+  if(R.lastT>=0&&t-R.lastT>2)R.gaps.push([R.lastT,t]);
+  R.lastT=t;
   var g=e.accelerationIncludingGravity||{};
   var c=e.acceleration; // OS sensor-fusion gravity removal — better than any software filter
   var r=e.rotationRate||{};
   var hasC=c&&c.x!==null&&c.x!==undefined;
-  if(hasC)R.cleanCount++;
-  R.samples.push({
-    t:t,
-    gx:g.x||0,gy:g.y||0,gz:g.z||0,
-    cx:hasC?c.x:null,cy:hasC?c.y:null,cz:hasC?c.z:null,
-    // rotationRate is deg/s in the spec — convert to rad/s to match MATLAB convention
-    rx:(r.alpha||0)*Math.PI/180,ry:(r.beta||0)*Math.PI/180,rz:(r.gamma||0)*Math.PI/180
-  });
+  var B=R.bin,bi=Math.floor(t/0.04);
+  if(bi!==B.i&&B.n>0)flushBin();
+  B.i=bi;B.n++;
+  B.gx+=g.x||0;B.gy+=g.y||0;B.gz+=g.z||0;
+  if(hasC){B.cx+=c.x;B.cy+=c.y;B.cz+=c.z;B.cn++;}
+  // rotationRate is deg/s in the spec — convert to rad/s to match MATLAB convention
+  B.rx+=(r.alpha||0)*Math.PI/180;B.ry+=(r.beta||0)*Math.PI/180;B.rz+=(r.gamma||0)*Math.PI/180;
+}
+function flushBin(){
+  var B=R.bin,n=B.n;
+  R.T.push((B.i+0.5)*0.04);
+  R.GX.push(B.gx/n);R.GY.push(B.gy/n);R.GZ.push(B.gz/n);
+  if(B.cn>0){R.CX.push(B.cx/B.cn);R.CY.push(B.cy/B.cn);R.CZ.push(B.cz/B.cn);R.cleanCount++;}
+  else{R.CX.push(0);R.CY.push(0);R.CZ.push(0);}
+  R.RX.push(B.rx/n);R.RY.push(B.ry/n);R.RZ.push(B.rz/n);
+  B.n=0;B.gx=B.gy=B.gz=B.cx=B.cy=B.cz=B.rx=B.ry=B.rz=0;B.cn=0;
 }
 
 function onGPS(pos){
@@ -525,17 +544,16 @@ function onGPS(pos){
 function updateRecUI(){
   var el=performance.now()/1000-R.t0;
   var m=Math.floor(el/60),s=Math.floor(el%60);
-  document.getElementById('rElapsed').textContent=m+':'+(s<10?'0':'')+s;
-  document.getElementById('rSamples').textContent=R.samples.length.toLocaleString();
-  document.getElementById('rHz').textContent=el>1?(R.samples.length/el).toFixed(0):'—';
+  document.getElementById('rElapsed').textContent=(m>=60?Math.floor(m/60)+':'+((m%60)<10?'0':'')+(m%60):m)+':'+(s<10?'0':'')+s;
+  document.getElementById('rSamples').textContent=R.T.length.toLocaleString()+(R.gaps.length?' ⚠'+R.gaps.length:'');
+  document.getElementById('rHz').textContent=el>1?(R.rawEvents/el).toFixed(0):'—';
   var lastFix=R.gps.length?R.gps[R.gps.length-1]:null;
   document.getElementById('rGps').textContent=lastFix?(lastFix.acc<30?'✓':'~'+lastFix.acc.toFixed(0)+'m'):'…';
-  // live vibration bar — instantaneous clean magnitude
-  var lv=0;
-  if(R.samples.length){
-    var s0=R.samples[R.samples.length-1];
-    if(s0.cx!==null)lv=Math.sqrt(s0.cx*s0.cx+s0.cy*s0.cy+s0.cz*s0.cz);
-    else lv=Math.abs(Math.sqrt(s0.gx*s0.gx+s0.gy*s0.gy+s0.gz*s0.gz)-9.81);
+  // live vibration bar — last stored 25 Hz sample
+  var lv=0,n=R.T.length;
+  if(n){
+    if(R.cleanCount/n>0.5)lv=Math.sqrt(R.CX[n-1]*R.CX[n-1]+R.CY[n-1]*R.CY[n-1]+R.CZ[n-1]*R.CZ[n-1]);
+    else lv=Math.abs(Math.sqrt(R.GX[n-1]*R.GX[n-1]+R.GY[n-1]*R.GY[n-1]+R.GZ[n-1]*R.GZ[n-1])-9.81);
   }
   document.getElementById('liveFill').style.width=Math.min(100,lv/8*100)+'%';
   document.getElementById('liveLabel').textContent=R.on?('live vibration '+lv.toFixed(2)+' m/s²'):'idle';
@@ -545,20 +563,21 @@ function stopRecording(){
   R.on=false;
   clearTimeout(R.watchdog);
   window.removeEventListener('devicemotion',onMotion);
+  if(R.bin.n>0)flushBin();
   if(R.geoId!==null&&navigator.geolocation)navigator.geolocation.clearWatch(R.geoId);
   if(R.wakeLock){try{R.wakeLock.release();}catch(e){}R.wakeLock=null;}
   document.removeEventListener('visibilitychange',reacquireWakeLock);
   clearInterval(R.uiTimer);
   var btn=document.getElementById('recBtn');
   btn.textContent='START';btn.classList.remove('recording');
-  document.getElementById('liveLabel').textContent='stopped · '+R.samples.length.toLocaleString()+' samples';
-  R.hasClean=R.samples.length>0&&R.cleanCount/R.samples.length>0.9;
-  if(R.samples.length>100){
+  document.getElementById('liveLabel').textContent='stopped · '+R.T.length.toLocaleString()+' samples'+(R.gaps.length?' · '+R.gaps.length+' gap'+(R.gaps.length>1?'s':''):'');
+  if(R.T.length>100){
     document.getElementById('btnAnalyzeRec').disabled=false;
-  } else if(R.samples.length<10){
-    recWarn('⚠ Only '+R.samples.length+' sample'+(R.samples.length===1?'':'s')+' captured — the motion sensors are not reaching this page. Run 🔍 TEST SENSORS above to see what is blocked (usually: opened in an app preview instead of the browser, or not on HTTPS).');
+    if(R.gaps.length)recWarn('ℹ Recording has '+R.gaps.length+' interruption'+(R.gaps.length>1?'s':'')+' (calls, app switches, or screen off). The analysis will skip the gaps but the affected minutes have no data.');
+  } else if(R.rawEvents<10){
+    recWarn('⚠ Only '+R.rawEvents+' sensor event'+(R.rawEvents===1?'':'s')+' captured — the motion sensors are not reaching this page. Run 🔍 TEST SENSORS above to see what is blocked (usually: opened in an app preview instead of the browser, or not on HTTPS).');
   } else {
-    recWarn('⚠ Only '+R.samples.length+' samples captured — too short to analyze. Record at least ~30 seconds.');
+    recWarn('⚠ Only '+R.T.length+' samples captured — too short to analyze. Record at least ~30 seconds.');
   }
 }
 
@@ -927,18 +946,9 @@ function analyzeRecording(){
   document.getElementById('tabs').style.display='none';
   setProgress(10,'Preparing recorded data...');
   setTimeout(function(){
-    var S=R.samples;
-    var t=S.map(function(s){return s.t;});
-    var rawSeries={gx:S.map(function(s){return s.gx;}),gy:S.map(function(s){return s.gy;}),gz:S.map(function(s){return s.gz;}),
-                   rx:S.map(function(s){return s.rx;}),ry:S.map(function(s){return s.ry;}),rz:S.map(function(s){return s.rz;})};
-    if(R.hasClean){
-      rawSeries.cx=S.map(function(s){return s.cx||0;});
-      rawSeries.cy=S.map(function(s){return s.cy||0;});
-      rawSeries.cz=S.map(function(s){return s.cz||0;});
-    }
-    setProgress(25,'Downsampling to 25 Hz...');
-    var ds=downsampleSeries(rawSeries,t,25);
-    var dT=ds.t,dS=ds.series;
+    // Data is already decimated to 25 Hz during recording
+    var dT=R.T,n=dT.length;
+    var hasClean=n>0&&R.cleanCount/n>0.9;
     // GPS → interpolate onto acc timebase
     var speed=null,alt=null,lat=null,lon=null,posPts=null;
     var goodGps=R.gps.filter(function(g){return g.acc<100&&isFinite(g.lat)&&isFinite(g.lon)&&g.lat!==0;});
@@ -950,35 +960,35 @@ function analyzeRecording(){
       lon=interp(gT,goodGps.map(function(g){return g.lon;}),dT);
       posPts=goodGps.map(function(g){return{lat:g.lat,lon:g.lon};});
     }
-    setProgress(45,'Gravity removal...');
+    setProgress(40,'Gravity removal...');
     setTimeout(function(){
       var cax,cay,caz,corrPct,method;
-      if(R.hasClean){
+      if(hasClean){
         // OS sensor fusion already removed gravity — just remove residual DC drift
-        var n=dS.cx.length,sx=0,sy=0,sz=0;
-        for(var k=0;k<n;k++){sx+=dS.cx[k];sy+=dS.cy[k];sz+=dS.cz[k];}
+        var sx=0,sy=0,sz=0;
+        for(var k=0;k<n;k++){sx+=R.CX[k];sy+=R.CY[k];sz+=R.CZ[k];}
         var mx2=sx/n,my2=sy/n,mz2=sz/n;
-        cax=dS.cx.map(function(v){return v-mx2;});
-        cay=dS.cy.map(function(v){return v-my2;});
-        caz=dS.cz.map(function(v){return v-mz2;});
+        cax=R.CX.map(function(v){return v-mx2;});
+        cay=R.CY.map(function(v){return v-my2;});
+        caz=R.CZ.map(function(v){return v-mz2;});
         corrPct=100;method='OS sensor fusion';
       } else {
         // Fallback: DC removal + complementary filter with recorded gyro
-        var nn=dS.gx.length,sumX=0,sumY=0,sumZ=0;
-        for(var k2=0;k2<nn;k2++){sumX+=dS.gx[k2];sumY+=dS.gy[k2];sumZ+=dS.gz[k2];}
-        var mX=sumX/nn,mY=sumY/nn,mZ=sumZ/nn;
-        var dcX=dS.gx.map(function(v){return v-mX;});
-        var dcY=dS.gy.map(function(v){return v-mY;});
-        var dcZ=dS.gz.map(function(v){return v-mZ;});
-        var cor=correctOrientation(dcX,dcY,dcZ,dS.rx,dS.ry,dS.rz,dT);
+        var sumX=0,sumY=0,sumZ=0;
+        for(var k2=0;k2<n;k2++){sumX+=R.GX[k2];sumY+=R.GY[k2];sumZ+=R.GZ[k2];}
+        var mX=sumX/n,mY=sumY/n,mZ=sumZ/n;
+        var dcX=R.GX.map(function(v){return v-mX;});
+        var dcY=R.GY.map(function(v){return v-mY;});
+        var dcZ=R.GZ.map(function(v){return v-mZ;});
+        var cor=correctOrientation(dcX,dcY,dcZ,R.RX,R.RY,R.RZ,dT);
         cax=cor.cax;cay=cor.cay;caz=cor.caz;corrPct=cor.corrPct;method='complementary filter (fallback)';
       }
       finishAnalysis({
         cax:cax,cay:cay,caz:caz,
-        rawX:dS.gx,rawY:dS.gy,rawZ:dS.gz,
+        rawX:R.GX,rawY:R.GY,rawZ:R.GZ,
         t:dT,speed:speed,alt:alt,lat:lat,lon:lon,posPts:posPts,
-        corrPct:corrPct,method:method,
-        accN:dT.length,gyrN:dT.length,tsOk:true,source:'LIVE'
+        corrPct:corrPct,method:method,gaps:R.gaps.slice(),
+        accN:n,gyrN:n,tsOk:true,source:'LIVE'
       });
     },200);
   },100);
@@ -1266,7 +1276,7 @@ function renderResults(){
   document.getElementById('resCar').textContent=meta.car+(meta.year?' · '+meta.year:'');
   document.getElementById('resMeta').textContent=[meta.operator,meta.condition,meta.mileage?meta.mileage+'km':'',new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})].filter(Boolean).join(' · ');
   document.getElementById('correctionBadge').innerHTML='<div class="correction-badge '+(G.corrPct>80?'applied':'partial')+'">⟳ '+(G.method==='OS sensor fusion'?'OS SENSOR FUSION':'ORIENTATION '+(G.corrPct>80?'CORRECTED':'PARTIAL '+G.corrPct+'%'))+'</div>';
-  document.getElementById('alignNote').innerHTML=(G.source==='LIVE'?'Recorded live on this device · ':'')+G.accN.toLocaleString()+' samples at 25 Hz'+(G.posPts?' + GPS ('+G.posPts.length+' fixes)':'')+' · gravity removal: '+G.method+(G.tsOk?'':' · ⚠ timestamps estimated');
+  document.getElementById('alignNote').innerHTML=(G.source==='LIVE'?'Recorded live on this device · ':'')+G.accN.toLocaleString()+' samples at 25 Hz'+(G.posPts?' + GPS ('+G.posPts.length+' fixes)':'')+' · gravity removal: '+G.method+((G.gaps&&G.gaps.length)?' · ⚠ '+G.gaps.length+' interruption'+(G.gaps.length>1?'s':'')+' (calls/app switches)':'')+(G.tsOk?'':' · ⚠ timestamps estimated');
   renderVehicleHealth(stats.rawRms,stats.rmsTotal);
   var vc=stats.rmsTotal>3?'alert':stats.rmsTotal>1.5?'warn':'good';
   document.getElementById('statRow').innerHTML=
@@ -1446,6 +1456,65 @@ function downloadSessionCSV(){
   setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
 }
 
+// ── JSON export — full session object: metadata + analysis summary + data ────
+function downloadSessionJSON(){
+  if(!G){alert('Nothing to export');return;}
+  var r4=function(v){return Math.round(v*10000)/10000;};
+  var tier=getHealthTier(G.stats.rawRms);
+  var obj={
+    format:'vibra-session',version:9,
+    meta:{
+      car:document.getElementById('mCar').value||'',
+      year:document.getElementById('mYear').value||'',
+      mileage:document.getElementById('mMileage').value||'',
+      condition:document.getElementById('mCondition').value||'',
+      operator:document.getElementById('mOperator').value||'',
+      notes:document.getElementById('mNotes').value||'',
+      date:new Date().toISOString(),
+      method:G.method,samples:G.t.length,rateHz:25
+    },
+    summary:{
+      rawRms:r4(G.stats.rawRms),cleanRms:r4(G.stats.rmsTotal),peak:r4(G.stats.peak),
+      domFreqHz:G.stats.domFreq,healthTier:tier.label,
+      rmsX:r4(G.stats.rmsX),rmsY:r4(G.stats.rmsY),rmsZ:r4(G.stats.rmsZ),
+      durationSec:Math.round(G.stats.duration)
+    },
+    traffic:G.traffic||null,
+    events:G.events.map(function(e){
+      var o={type:e.type,label:e.label,time:Math.round(e.time*10)/10};
+      if(e.peak!==undefined)o.peak=r4(e.peak);
+      if(e.dispCm!==undefined)o.dispCm=+e.dispCm;
+      if(e.count!==undefined)o.count=e.count;
+      if(e.altChange!==undefined)o.altChangeM=+e.altChange;
+      if(e.duration!==undefined)o.durationSec=+e.duration;
+      if(e.conf)o.confidence=e.conf;
+      if(e.speed!==null&&e.speed!==undefined)o.speedKmh=+e.speed;
+      if(e.lat!==null&&e.lat!==undefined&&isFinite(e.lat)){o.lat=Math.round(e.lat*1e6)/1e6;o.lon=Math.round(e.lon*1e6)/1e6;}
+      return o;
+    }),
+    roughness:G.roughness.map(function(s){return{t:Math.round(s.t*10)/10,rms:Math.round(s.rms*1000)/1000};}),
+    gapsSec:(G.gaps||[]).map(function(g){return[Math.round(g[0]*10)/10,Math.round(g[1]*10)/10];}),
+    data:{
+      t:G.t.map(function(v){return Math.round(v*1000)/1000;}),
+      acc_x:Array.from(G.rawX).map(r4),acc_y:Array.from(G.rawY).map(r4),acc_z:Array.from(G.rawZ).map(r4),
+      clean_x:Array.from(G.cax).map(r4),clean_y:Array.from(G.cay).map(r4),clean_z:Array.from(G.caz).map(r4)
+    }
+  };
+  if(G.lat){
+    obj.data.lat=Array.from(G.lat).map(function(v){return Math.round(v*1e6)/1e6;});
+    obj.data.lon=Array.from(G.lon).map(function(v){return Math.round(v*1e6)/1e6;});
+    obj.data.speed_ms=Array.from(G.speed||[]).map(function(v){return Math.round(v*100)/100;});
+    obj.data.alt_m=Array.from(G.alt||[]).map(function(v){return Math.round(v*10)/10;});
+  }
+  var blob=new Blob([JSON.stringify(obj)],{type:'application/json'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  var carTag=(document.getElementById('mCar').value||'session').replace(/[^A-Za-z0-9]+/g,'_');
+  a.download='vibra_'+carTag+'_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.json';
+  a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
+}
+
 // ── Session import — re-analyze a file exported by this app ──────────────────
 function loadSessionFile(file){
   if(!file)return;
@@ -1453,6 +1522,39 @@ function loadSessionFile(file){
   r.onload=function(e){
     try{
       var text=e.target.result;
+      // ── JSON session file ──
+      if(text.trim().charAt(0)==='{'){
+        var obj=JSON.parse(text);
+        if(obj.format!=='vibra-session'||!obj.data||!obj.data.t){alert('Not a VibraAnalyzer JSON session file');return;}
+        var D=obj.data,M=obj.meta||{};
+        if(M.car!==undefined)document.getElementById('mCar').value=M.car;
+        if(M.year!==undefined)document.getElementById('mYear').value=M.year;
+        if(M.mileage!==undefined)document.getElementById('mMileage').value=M.mileage;
+        if(M.operator!==undefined)document.getElementById('mOperator').value=M.operator;
+        if(M.notes!==undefined)document.getElementById('mNotes').value=M.notes;
+        if(M.condition)document.getElementById('mCondition').value=M.condition;
+        var posPtsJ=null;
+        if(D.lat){
+          posPtsJ=[];var plj=null;
+          for(var kj=0;kj<D.lat.length;kj++){
+            if(isFinite(D.lat[kj])&&D.lat[kj]!==0){
+              if(!plj||Math.abs(D.lat[kj]-plj.lat)+Math.abs(D.lon[kj]-plj.lon)>0.000005){plj={lat:D.lat[kj],lon:D.lon[kj]};posPtsJ.push(plj);}
+            }
+          }
+          if(posPtsJ.length<2)posPtsJ=null;
+        }
+        document.getElementById('panel_csv').style.display='none';
+        document.getElementById('panel_rec').style.display='none';
+        document.getElementById('tabs').style.display='none';
+        setProgress(30,'Re-analyzing imported session...');
+        finishAnalysis({cax:D.clean_x,cay:D.clean_y,caz:D.clean_z,
+          rawX:D.acc_x,rawY:D.acc_y,rawZ:D.acc_z,
+          t:D.t,speed:D.speed_ms||null,alt:D.alt_m||null,lat:D.lat||null,lon:D.lon||null,posPts:posPtsJ,
+          corrPct:100,method:(M.method||'imported session'),gaps:obj.gapsSec||[],
+          accN:D.t.length,gyrN:D.t.length,tsOk:true,source:'IMPORT'});
+        return;
+      }
+      // ── CSV session file ──
       var lines=text.split('\n').map(function(l){return l.trim();}).filter(Boolean);
       var meta={};
       var di=0;
@@ -1500,7 +1602,7 @@ function loadSessionFile(file){
       setProgress(30,'Re-analyzing imported session...');
       finishAnalysis({cax:cax,cay:cay,caz:caz,rawX:rawX,rawY:rawY,rawZ:rawZ,
         t:t,speed:speed,alt:alt,lat:lat,lon:lon,posPts:posPts,
-        corrPct:100,method:(meta.method||'imported session'),
+        corrPct:100,method:(meta.method||'imported session'),gaps:[],
         accN:t.length,gyrN:t.length,tsOk:true,source:'IMPORT'});
     }catch(err){alert('Import failed: '+err.message);}
   };
@@ -1519,7 +1621,7 @@ window.addEventListener('DOMContentLoaded',function(){loadCarDetails();FIELDS.fo
 
 function resetAll(){
   slots={acc:null,gyr:null,pos:null};G=null;showOverlay=false;
-  R.samples=[];R.gps=[];
+  R.T=[];R.GX=[];R.GY=[];R.GZ=[];R.CX=[];R.CY=[];R.CZ=[];R.RX=[];R.RY=[];R.RZ=[];R.gps=[];R.gaps=[];R.rawEvents=0;R.cleanCount=0;R.lastT=-1;
   Object.values(charts).forEach(function(c){try{c.destroy();}catch(e){}});charts={};
   ['acc','gyr','pos'].forEach(function(k){document.getElementById('slot_'+k).classList.remove('loaded');document.getElementById('fn_'+k).textContent='';document.getElementById('badge_'+k).className='slot-badge '+(k==='pos'?'badge-opt':'badge-req');document.getElementById('badge_'+k).textContent=k==='pos'?'OPT':'REQ';});
   document.getElementById('btnAnalyze').disabled=true;
