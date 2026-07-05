@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>VibraAnalyzer V9</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#1c1c1e;--surface:#2c2c2e;--surface2:#3a3a3c;--border:#3a3a3c;--border2:#48484a;--text:#f2f2f7;--text2:#aeaeb2;--text3:#636366;--accent:#ff9f0a;--accent-dim:rgba(255,159,10,0.15);--green:#30d158;--green-dim:rgba(48,209,88,0.15);--red:#ff453a;--red-dim:rgba(255,69,58,0.15);--blue:#0a84ff;--blue-dim:rgba(10,132,255,0.15);--orange:#ff6b35;--purple:#a855f7;--yellow:#ffd60a;--mono:'DM Mono',monospace;--sans:'DM Sans',sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;-webkit-font-smoothing:antialiased}
+.app{max-width:900px;margin:0 auto;padding:0 0 60px}
+.header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.brand{font-family:var(--mono);font-size:18px;font-weight:500}.brand em{color:var(--accent);font-style:normal}
+.ver{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:2px}
+.tabs{display:flex;border-bottom:1px solid var(--border)}
+.tab{flex:1;padding:14px;text-align:center;font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;text-transform:uppercase}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.panel{padding:24px;display:none}
+.panel.show{display:block}
+.sh{font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:2.5px;color:var(--text3);text-transform:uppercase;margin-bottom:12px}
+.file-slots{display:flex;flex-direction:column;gap:10px;margin-bottom:24px}
+.file-slot{background:var(--surface);border:1.5px dashed var(--border2);border-radius:10px;padding:16px;display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;cursor:pointer;transition:all 0.2s;position:relative}
+.file-slot:hover{border-color:var(--accent);background:var(--accent-dim)}
+.file-slot.loaded{border-style:solid;border-color:var(--green);background:var(--green-dim)}
+.file-slot input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.slot-icon{font-size:22px;text-align:center}
+.slot-title{font-size:13px;font-weight:600;margin-bottom:2px}
+.slot-sub{font-family:var(--mono);font-size:10px;color:var(--text3)}
+.slot-badge{font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:10px;letter-spacing:1px;flex-shrink:0}
+.badge-req{background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent)}
+.badge-opt{background:var(--surface2);color:var(--text3);border:1px solid var(--border2)}
+.badge-ok{background:var(--green-dim);color:var(--green);border:1px solid var(--green)}
+.slot-filename{font-family:var(--mono);font-size:10px;color:var(--green);margin-top:3px}
+.fg{display:grid;gap:10px;margin-bottom:12px}
+.c2{grid-template-columns:1fr 1fr}.c3{grid-template-columns:1fr 1fr 1fr}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:2px;color:var(--text3);text-transform:uppercase}
+.field input,.field select{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;font-family:var(--sans);font-size:14px;color:var(--text);outline:none;transition:border-color 0.15s;-webkit-appearance:none;width:100%}
+.field input:focus,.field select:focus{border-color:var(--accent)}
+.field input::placeholder{color:var(--text3)}
+.field select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23636366'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:30px}
+.btn{padding:14px 24px;border-radius:10px;border:none;font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;width:100%}
+.btn:active{transform:scale(0.98)}
+.btn-analyze{background:var(--accent);color:#1c1c1e}
+.btn-analyze:disabled{background:var(--surface2);color:var(--text3);cursor:not-allowed}
+.btn-reset{background:none;color:var(--text2);border:1px solid var(--border2);margin-top:8px}
+/* Recorder */
+.rec-status{background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:20px;margin-bottom:16px}
+.rec-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.rec-cell{text-align:center}
+.rec-val{font-family:var(--mono);font-size:18px;font-weight:500}
+.rec-key{font-family:var(--mono);font-size:8px;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;margin-top:3px}
+.rec-btn{width:130px;height:130px;border-radius:50%;border:4px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--mono);font-size:13px;letter-spacing:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;margin:20px auto;transition:all .2s;text-transform:uppercase}
+.rec-btn.armed{border-color:var(--red);color:var(--red)}
+.rec-btn.recording{border-color:var(--red);background:var(--red-dim);color:var(--red);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,69,58,0.35)}50%{box-shadow:0 0 0 14px rgba(255,69,58,0)}}
+.rec-live-bar{height:36px;background:var(--surface2);border-radius:8px;margin-top:14px;position:relative;overflow:hidden}
+.rec-live-fill{position:absolute;left:0;top:0;bottom:0;background:var(--accent);opacity:0.7;width:0%;transition:width .1s}
+.rec-live-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:var(--text);letter-spacing:1px}
+.rec-note{font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.8;margin-top:12px}
+.rec-note b{color:var(--accent);font-weight:500}
+.rec-warn{background:rgba(255,159,10,0.1);border:1px solid var(--accent);border-radius:8px;padding:10px 14px;font-family:var(--mono);font-size:10px;color:var(--accent);line-height:1.7;margin-bottom:14px;display:none}
+.rec-warn.show{display:block}
+/* Progress / results (unchanged from V8 + additions) */
+.progress-wrap{padding:24px;display:none}
+.progress-wrap.show{display:block}
+.progress-label{font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.progress-spinner{width:10px;height:10px;border-radius:50%;border:2px solid var(--border2);border-top-color:var(--accent);animation:spin 0.8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.progress-bar{height:3px;background:var(--border2);border-radius:2px;overflow:hidden}
+.progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width 0.3s ease;width:0%}
+.results{padding:0 24px;display:none}
+.results.show{display:block}
+.health-split{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.health-mini{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:14px;text-align:center}
+.health-mini-val{font-family:var(--mono);font-size:22px;font-weight:500;margin-bottom:2px}
+.health-mini-key{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase}
+.health-mini-sub{font-family:var(--mono);font-size:9px;color:var(--text3);margin-top:4px}
+.health-banner{border-radius:10px;padding:16px 20px;margin-bottom:20px;border:1px solid;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center}
+.health-banner.healthy{background:var(--green-dim);border-color:var(--green)}
+.health-banner.monitor{background:rgba(255,159,10,0.1);border-color:var(--accent)}
+.health-banner.attention{background:rgba(255,107,53,0.12);border-color:var(--orange)}
+.health-banner.poor{background:var(--red-dim);border-color:var(--red)}
+.hb-label{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:4px}
+.hb-verdict{font-size:15px;font-weight:600;margin-bottom:6px}
+.hb-desc{font-size:12px;color:var(--text2);line-height:1.6}
+.hb-val{font-family:var(--mono);font-size:30px;font-weight:500;text-align:right;line-height:1}
+.hb-unit{font-family:var(--mono);font-size:10px;color:var(--text3);text-align:right;margin-top:2px}
+.hb-gauge{height:5px;border-radius:3px;background:var(--border2);margin-top:10px;overflow:hidden}
+.hb-gauge-fill{height:100%;border-radius:3px}
+.hb-ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;color:var(--text3);margin-top:3px}
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+.stat-card{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px 12px;text-align:center}
+.stat-val{font-family:var(--mono);font-size:18px;font-weight:500;color:var(--text);margin-bottom:4px}
+.stat-key{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase}
+.stat-card.warn .stat-val{color:var(--accent)}
+.stat-card.alert .stat-val{color:var(--red)}
+.stat-card.good .stat-val{color:var(--green)}
+.chart-block{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:16px;margin-bottom:16px}
+.chart-title{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:6px}
+.chart-wrap{position:relative;height:200px}
+.filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.ftag{padding:4px 12px;border-radius:20px;font-family:var(--mono);font-size:9px;letter-spacing:1.5px;border:1px solid var(--border2);color:var(--text3);cursor:pointer;transition:all 0.15s}
+.ftag.active{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.road-legend{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.rl-item{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9px;color:var(--text3)}
+.rl-dot{width:12px;height:6px;border-radius:3px}
+.map-block{background:var(--surface);border:1px solid var(--border2);border-radius:10px;overflow:hidden;margin-bottom:16px}
+.map-header{padding:14px 16px 10px}
+.map-title{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:8px}
+.map-legend{display:flex;gap:12px;flex-wrap:wrap}
+.legend-item{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;color:var(--text3)}
+.legend-dot{width:8px;height:8px;border-radius:50%}
+#routeMap{width:100%}
+.road-score{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.rs-card{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:12px;text-align:center}
+.rs-val{font-family:var(--mono);font-size:20px;font-weight:500;margin-bottom:3px}
+.rs-key{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase}
+.rs-bar{height:5px;border-radius:3px;margin-top:8px;overflow:hidden;background:var(--border2)}
+.rs-fill{height:100%;border-radius:3px}
+.axis-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.axis-card{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px;text-align:center}
+.axis-label{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--text3);margin-bottom:6px}
+.axis-val{font-family:var(--mono);font-size:20px;font-weight:500;color:var(--text);margin-bottom:4px}
+.axis-bar{height:4px;border-radius:2px;background:var(--border2);margin-top:8px;overflow:hidden}
+.axis-fill{height:100%;border-radius:2px}
+.event-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.event-item{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:12px 14px;display:grid;grid-template-columns:28px 1fr auto;gap:12px;align-items:center;transition:background 0.15s}
+.event-item:hover{background:var(--surface2)}
+.event-type{font-size:13px;font-weight:500}
+.event-detail{font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:2px}
+.event-conf{display:inline-block;font-family:var(--mono);font-size:8px;letter-spacing:1px;padding:2px 7px;border-radius:10px;margin-left:6px;vertical-align:1px}
+.event-mag{font-family:var(--mono);font-size:12px;font-weight:500;text-align:right}
+.event-icon{font-size:18px;text-align:center}
+.event-item.pothole{border-left:3px solid var(--red)}.event-item.pothole .event-type,.event-item.pothole .event-mag{color:var(--red)}
+.event-item.bump{border-left:3px solid var(--orange)}.event-item.bump .event-type,.event-item.bump .event-mag{color:var(--orange)}
+.event-item.bridge{border-left:3px solid var(--blue)}.event-item.bridge .event-type,.event-item.bridge .event-mag{color:var(--blue)}
+.event-item.tunnel{border-left:3px solid var(--purple)}.event-item.tunnel .event-type,.event-item.tunnel .event-mag{color:var(--purple)}
+.event-item.dots{border-left:3px solid var(--yellow)}.event-item.dots .event-type,.event-item.dots .event-mag{color:var(--yellow)}
+.no-events{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:20px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--text3)}
+.diag-card{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:18px;margin-bottom:16px}
+.diag-header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.diag-icon{font-size:24px}
+.diag-title{font-size:15px;font-weight:600}
+.diag-sub{font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:2px}
+.diag-items{display:flex;flex-direction:column;gap:10px}
+.diag-item{display:flex;gap:10px;align-items:flex-start}
+.diag-bullet{width:6px;height:6px;border-radius:50%;margin-top:6px;flex-shrink:0}
+.diag-text{font-size:13px;color:var(--text2);line-height:1.6}
+.correction-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;font-family:var(--mono);font-size:9px;letter-spacing:1.5px}
+.correction-badge.applied{background:var(--green-dim);color:var(--green);border:1px solid var(--green)}
+.correction-badge.partial{background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent)}
+.align-note{background:var(--blue-dim);border:1px solid var(--blue);border-radius:8px;padding:10px 14px;font-family:var(--mono);font-size:10px;color:#6ab8ff;margin-bottom:16px;line-height:1.7}
+/* Tuning sliders */
+.tune-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px}
+.tune-field{display:flex;flex-direction:column;gap:6px}
+.tune-label{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;display:flex;justify-content:space-between}
+.tune-label b{color:var(--accent);font-weight:500}
+input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:var(--border2);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--bg)}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--bg)}
+.btn-small{padding:10px 18px;border-radius:8px;border:1px solid var(--accent);background:var(--accent-dim);color:var(--accent);font-family:var(--mono);font-size:10px;letter-spacing:2px;cursor:pointer;text-transform:uppercase;width:100%}
+.map-err{padding:16px;font-family:var(--mono);font-size:10px;color:var(--red);line-height:1.7}
+@media(max-width:600px){.rec-grid{grid-template-columns:repeat(2,1fr);row-gap:14px}.tune-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="header">
+  <div class="brand">Vibra<em>Analyzer</em></div>
+  <div class="ver">V9.0 · STANDALONE</div>
+</div>
+
+<div class="tabs" id="tabs">
+  <div class="tab active" id="tab_rec" onclick="showTab('rec')">● Record</div>
+  <div class="tab" id="tab_csv" onclick="showTab('csv')">⇪ Upload CSV</div>
+</div>
+
+<!-- ══════════════ RECORD PANEL ══════════════ -->
+<div class="panel show" id="panel_rec">
+  <div class="rec-warn" id="recWarn"></div>
+  <div class="rec-status" id="sensorCheckCard">
+    <div class="sh" style="margin-bottom:10px">Sensor Check — run this first</div>
+    <button class="btn-small" onclick="runSensorCheck()">🔍 TEST SENSORS &amp; GPS</button>
+    <div id="scResults" style="margin-top:12px;font-family:var(--mono);font-size:10px;line-height:2;color:var(--text2)"></div>
+  </div>
+  <div class="rec-status">
+    <div class="sh" style="margin-bottom:4px">Live Session</div>
+    <button class="rec-btn" id="recBtn" onclick="toggleRecording()">START</button>
+    <div class="rec-live-bar"><div class="rec-live-fill" id="liveFill"></div><div class="rec-live-label" id="liveLabel">idle</div></div>
+    <div class="rec-grid">
+      <div class="rec-cell"><div class="rec-val" id="rElapsed">0:00</div><div class="rec-key">Elapsed</div></div>
+      <div class="rec-cell"><div class="rec-val" id="rSamples">0</div><div class="rec-key">Samples</div></div>
+      <div class="rec-cell"><div class="rec-val" id="rHz">—</div><div class="rec-key">Rate Hz</div></div>
+      <div class="rec-cell"><div class="rec-val" id="rGps">—</div><div class="rec-key">GPS Fix</div></div>
+    </div>
+  </div>
+  <button class="btn btn-analyze" id="btnAnalyzeRec" onclick="analyzeRecording()" disabled>▶ ANALYZE RECORDING</button>
+  <div class="rec-note">
+    <b>How to record:</b> mount the phone rigidly (dash mount or center console — not loose on a seat), press START before driving, keep the screen on. STOP when done, then Analyze.<br>
+    <b>Requirements:</b> page must be opened over <b>HTTPS</b> (or localhost) for motion sensors and GPS to work. On iPhone, tap START and allow motion access when Safari asks.<br>
+    <b>Note:</b> the screen must stay awake during recording — the app requests a wake lock automatically where supported.
+  </div>
+  <div style="margin-top:24px" id="recMetaWrap">
+    <div class="sh">Session Info</div>
+    <div class="fg c2">
+      <div class="field"><label>Car Make / Model</label><input type="text" id="mCar" placeholder="e.g. Toyota RAV4"></div>
+      <div class="field"><label>Year</label><input type="text" id="mYear" placeholder="2007" inputmode="numeric"></div>
+    </div>
+    <div class="fg c3">
+      <div class="field"><label>Mileage km</label><input type="text" id="mMileage" placeholder="187000" inputmode="numeric"></div>
+      <div class="field"><label>Condition</label>
+        <select id="mCondition"><option value="highway">Highway</option><option value="urban">Urban</option><option value="mixed">Mixed</option><option value="idle">Idle only</option></select></div>
+      <div class="field"><label>Operator</label><input type="text" id="mOperator" placeholder="Your name"></div>
+    </div>
+    <div class="fg"><div class="field"><label>Notes</label><input type="text" id="mNotes" placeholder="Known issues, AC on/off..."></div></div>
+  </div>
+</div>
+
+<!-- ══════════════ CSV PANEL ══════════════ -->
+<div class="panel" id="panel_csv">
+  <div class="sh">MATLAB Export (legacy path)</div>
+  <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:16px;line-height:1.9">
+    <span style="color:var(--accent)">writetimetable(Acceleration, 'Acceleration.csv')</span><br>
+    <span style="color:var(--accent)">writetimetable(AngularVelocity, 'AngularVelocity.csv')</span><br>
+    <span style="color:var(--accent)">writetimetable(Position, 'Position.csv')</span>
+  </div>
+  <div class="file-slots">
+    <div class="file-slot" id="slot_acc"><input type="file" accept=".csv" onchange="loadSlot('acc',this.files[0])">
+      <div class="slot-icon">📈</div>
+      <div><div class="slot-title">Acceleration.csv <span style="color:var(--text3);font-size:11px">★ required</span></div>
+        <div class="slot-sub">Timestamp · X · Y · Z (m/s²)</div><div class="slot-filename" id="fn_acc"></div></div>
+      <div class="slot-badge badge-req" id="badge_acc">REQ</div></div>
+    <div class="file-slot" id="slot_gyr"><input type="file" accept=".csv" onchange="loadSlot('gyr',this.files[0])">
+      <div class="slot-icon">🔄</div>
+      <div><div class="slot-title">AngularVelocity.csv <span style="color:var(--text3);font-size:11px">★ required</span></div>
+        <div class="slot-sub">Timestamp · X · Y · Z (rad/s)</div><div class="slot-filename" id="fn_gyr"></div></div>
+      <div class="slot-badge badge-req" id="badge_gyr">REQ</div></div>
+    <div class="file-slot" id="slot_pos"><input type="file" accept=".csv" onchange="loadSlot('pos',this.files[0])">
+      <div class="slot-icon">📍</div>
+      <div><div class="slot-title">Position.csv <span style="color:var(--text3);font-size:11px">optional</span></div>
+        <div class="slot-sub">Timestamp · latitude · longitude · speed · altitude</div><div class="slot-filename" id="fn_pos"></div></div>
+      <div class="slot-badge badge-opt" id="badge_pos">OPT</div></div>
+  </div>
+  <button class="btn btn-analyze" id="btnAnalyze" onclick="runAnalysisCSV()" disabled>▶ RUN ANALYSIS</button>
+</div>
+
+<div class="progress-wrap" id="progressWrap">
+  <div class="progress-label"><div class="progress-spinner"></div><span id="progressLabel">Loading...</span></div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+</div>
+
+<!-- ══════════════ RESULTS ══════════════ -->
+<div class="results" id="results">
+  <div style="margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <div><div style="font-size:18px;font-weight:600" id="resCar">—</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:3px" id="resMeta">—</div></div>
+    <div id="correctionBadge"></div>
+  </div>
+  <div class="align-note" id="alignNote"></div>
+  <div id="vehicleHealth"></div>
+  <div class="stat-row" id="statRow"></div>
+  <div class="chart-block">
+    <div class="chart-title">Vibration Magnitude — Time Domain</div>
+    <div class="filter-row">
+      <div class="ftag" onclick="setFilter('raw')" id="f_raw">RAW</div>
+      <div class="ftag active" onclick="setFilter('light')" id="f_light">LIGHT (0.5 Hz)</div>
+      <div class="ftag" onclick="setFilter('med')" id="f_med">MEDIUM (0.2 Hz)</div>
+      <div class="ftag" onclick="setFilter('heavy')" id="f_heavy">HEAVY (0.05 Hz)</div>
+      <div class="ftag" onclick="toggleOverlay()" id="f_overlay">+ RAW OVERLAY</div>
+    </div>
+    <div class="chart-wrap"><canvas id="chartTime"></canvas></div>
+  </div>
+  <div class="chart-block">
+    <div class="chart-title">Road Surface Condition — Rolling Roughness</div>
+    <div class="road-legend">
+      <div class="rl-item"><div class="rl-dot" style="background:#30d158"></div>Good (&lt;2 m/s²)</div>
+      <div class="rl-item"><div class="rl-dot" style="background:#ff9f0a"></div>Moderate (2–4)</div>
+      <div class="rl-item"><div class="rl-dot" style="background:#ff453a"></div>Poor (&gt;4 m/s²)</div>
+    </div>
+    <div class="chart-wrap"><canvas id="chartRoughness"></canvas></div>
+  </div>
+  <div class="chart-block" id="speedChartBlock">
+    <div class="chart-title">Speed vs Vibration Intensity (filtered)</div>
+    <div class="chart-wrap"><canvas id="chartSpeed"></canvas></div>
+  </div>
+  <div class="map-block">
+    <div class="map-header">
+      <div class="map-title">Route Map — Road Condition + Events</div>
+      <div class="map-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#ff453a"></div>Pothole</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ff6b35"></div>Speed Bump</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ffd60a"></div>Botts' Dots</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#0a84ff"></div>Bridge</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#a855f7"></div>Tunnel/GPS Loss</div>
+      </div>
+    </div>
+    <div id="routeMap"></div>
+  </div>
+
+  <div class="chart-block">
+    <div class="chart-title">Event Detection Tuning</div>
+    <div class="tune-row">
+      <div class="tune-field">
+        <div class="tune-label"><span>Spike Sensitivity</span><b id="lblThresh">3.0×</b></div>
+        <input type="range" id="tThresh" min="20" max="50" value="30" oninput="tuneLabel()">
+        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;color:var(--text3)"><span>More events (2.0×)</span><span>Fewer, stronger (5.0×)</span></div>
+      </div>
+      <div class="tune-field">
+        <div class="tune-label"><span>Min Displacement</span><b id="lblDisp">5 cm</b></div>
+        <input type="range" id="tDisp" min="2" max="12" value="5" oninput="tuneLabel()">
+        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;color:var(--text3)"><span>Catch small (2 cm)</span><span>Big impacts only (12 cm)</span></div>
+      </div>
+    </div>
+    <button class="btn-small" onclick="reapplyDetection()">⟳ Re-run event detection</button>
+  </div>
+
+  <div class="sh">Road Surface Quality</div>
+  <div class="road-score" id="roadScore"></div>
+  <div class="sh">RMS Per Axis (Orientation-Corrected)</div>
+  <div class="axis-grid" id="axisGrid"></div>
+  <div class="sh" style="margin-bottom:12px">Detected Events <span id="evCount" style="color:var(--text3)"></span></div>
+  <div class="event-list" id="eventList"></div>
+  <div class="sh" style="margin-bottom:12px">Diagnostic Summary</div>
+  <div id="diagCard"></div>
+  <button class="btn btn-reset" onclick="downloadSessionCSV()">⬇ Export recorded data (CSV)</button>
+  <button class="btn btn-reset" onclick="resetAll()">↩ New Session</button>
+</div>
+</div>
+
+<script>
+'use strict';
+// ══════════════════════════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════════════════════════
+var slots={acc:null,gyr:null,pos:null};
+var charts={},currentFilter='light',showOverlay=false;
+// G holds everything the results screen needs, so detection can be re-run live
+var G=null; // {cax,cay,caz,rawX,rawY,rawZ,t,speed,alt,lat,lon,posPts,stats,roughness,corrPct,method,accN,gyrN,tsOk,events}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  TABS
+// ══════════════════════════════════════════════════════════════════════════════
+function showTab(k){
+  ['rec','csv'].forEach(function(x){
+    document.getElementById('tab_'+x).classList.toggle('active',x===k);
+    document.getElementById('panel_'+x).classList.toggle('show',x===k);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  RECORDER — replaces MATLAB Mobile entirely
+// ══════════════════════════════════════════════════════════════════════════════
+var R={on:false,t0:0,samples:[],gps:[],wakeLock:null,geoId:null,hasClean:false,cleanCount:0,uiTimer:null,watchdog:null};
+
+// ── Environment diagnosis ─────────────────────────────────────────────────────
+function envIssues(){
+  var issues=[];
+  if(window.self!==window.top)issues.push('EMBEDDED: This page is running inside another app or preview frame — motion sensors are blocked there. Open the file in Safari or Chrome directly (use "Open in Browser" / share → open in Safari).');
+  if(location.protocol==='file:')issues.push('LOCAL FILE: Opened as file:// — GPS is blocked and motion sensors are unreliable. Host the file on HTTPS (e.g. GitHub Pages) and open that link.');
+  else if(!window.isSecureContext)issues.push('NOT HTTPS: Motion sensors and GPS require an https:// address (or localhost).');
+  if(typeof DeviceMotionEvent==='undefined')issues.push('NO MOTION API: This browser does not expose motion sensors at all.');
+  return issues;
+}
+
+// ── Sensor check — 3 second live test with visible raw values ────────────────
+var SC={running:false};
+async function runSensorCheck(){
+  if(SC.running)return;
+  var out=document.getElementById('scResults');
+  var rows=[];
+  function paint(){out.innerHTML=rows.join('<br>');}
+  function ok(s){return '<span style="color:var(--green)">✓ '+s+'</span>';}
+  function bad(s){return '<span style="color:var(--red)">✕ '+s+'</span>';}
+  function warn(s){return '<span style="color:var(--accent)">⚠ '+s+'</span>';}
+  rows.push((window.self===window.top?ok('Running as top-level page'):bad('Embedded in another app/frame — sensors blocked here. Open in Safari/Chrome directly.')));
+  rows.push((location.protocol==='https:'?ok('HTTPS — sensors allowed'):location.protocol==='file:'?warn('file:// — GPS blocked, motion unreliable. Host on HTTPS.'):window.isSecureContext?ok(location.protocol+' secure context'):bad(location.protocol+' — not secure, sensors blocked')));
+  rows.push((typeof DeviceMotionEvent!=='undefined'?ok('Motion API present'):bad('Motion API missing in this browser')));
+  paint();
+  if(typeof DeviceMotionEvent==='undefined')return;
+  // iOS permission
+  if(typeof DeviceMotionEvent.requestPermission==='function'){
+    try{
+      var p=await DeviceMotionEvent.requestPermission();
+      rows.push(p==='granted'?ok('iOS motion permission granted'):bad('iOS motion permission: '+p+' — enable in Settings → Safari → Motion & Orientation Access'));
+      paint();
+      if(p!=='granted')return;
+    }catch(e){rows.push(bad('Permission request failed: '+e.message+' (usually means embedded frame)'));paint();return;}
+  }
+  // Live 3-second listen test
+  SC.running=true;
+  var count=0,lastVals='—',hasCleanChan=false;
+  var idx=rows.push(warn('Listening for motion events… hold or shake the phone'))-1;
+  function scMotion(e){
+    count++;
+    var g=e.accelerationIncludingGravity;
+    if(g&&g.x!==null)lastVals='x '+g.x.toFixed(2)+' · y '+g.y.toFixed(2)+' · z '+g.z.toFixed(2)+' m/s²';
+    if(e.acceleration&&e.acceleration.x!==null)hasCleanChan=true;
+    rows[idx]=warn('Motion events: '+count+' · '+lastVals);
+    paint();
+  }
+  window.addEventListener('devicemotion',scMotion);
+  setTimeout(function(){
+    window.removeEventListener('devicemotion',scMotion);
+    SC.running=false;
+    if(count===0){
+      rows[idx]=bad('0 motion events in 3 s — sensors are blocked. Most common cause: page opened inside an app preview instead of the real browser. Second: not on HTTPS.');
+    } else {
+      var hz=(count/3).toFixed(0);
+      rows[idx]=ok('Motion works — '+count+' events (~'+hz+' Hz) · last: '+lastVals);
+      rows.push(hasCleanChan?ok('OS gravity-removed channel available (best quality)'):warn('No OS clean channel — will use software gravity filter (fine)'));
+    }
+    paint();
+    // GPS test
+    if(!navigator.geolocation){rows.push(bad('No geolocation API'));paint();return;}
+    var gIdx=rows.push(warn('Requesting GPS fix…'))-1;paint();
+    navigator.geolocation.getCurrentPosition(function(pos){
+      rows[gIdx]=ok('GPS fix — accuracy '+Math.round(pos.coords.accuracy)+' m'+(pos.coords.speed!==null?' · speed channel available':''));
+      paint();
+    },function(err){
+      rows[gIdx]=bad('GPS failed: '+err.message+(location.protocol==='file:'?' (file:// blocks GPS — host on HTTPS)':''));
+      paint();
+    },{enableHighAccuracy:true,timeout:12000});
+  },3000);
+}
+
+function recWarn(msg){var w=document.getElementById('recWarn');w.innerHTML=msg;w.classList.add('show');}
+function recWarnClear(){document.getElementById('recWarn').classList.remove('show');}
+
+async function toggleRecording(){
+  if(R.on){stopRecording();return;}
+  recWarnClear();
+  var issues=envIssues();
+  if(issues.length){
+    recWarn('⚠ '+issues.join('<br><br>⚠ '));
+    return;
+  }
+  // iOS 13+ permission gate — must be inside a user gesture
+  if(typeof DeviceMotionEvent.requestPermission==='function'){
+    try{
+      var p=await DeviceMotionEvent.requestPermission();
+      if(p!=='granted'){recWarn('⚠ Motion access denied. Enable it in Settings → Safari → Motion & Orientation Access, then reload.');return;}
+    }catch(e){recWarn('⚠ Motion permission error: '+e.message);return;}
+  }
+  startRecording();
+}
+
+function startRecording(){
+  R.on=true;R.samples=[];R.gps=[];R.hasClean=false;R.cleanCount=0;
+  R.t0=performance.now()/1000;
+  document.getElementById('btnAnalyzeRec').disabled=true;
+  var btn=document.getElementById('recBtn');
+  btn.textContent='STOP';btn.classList.add('recording');
+  window.addEventListener('devicemotion',onMotion);
+  // GPS
+  if(navigator.geolocation){
+    R.geoId=navigator.geolocation.watchPosition(onGPS,function(err){
+      document.getElementById('rGps').textContent='✕';
+    },{enableHighAccuracy:true,maximumAge:500,timeout:15000});
+  }
+  // Keep the screen awake
+  if('wakeLock' in navigator){
+    navigator.wakeLock.request('screen').then(function(wl){R.wakeLock=wl;}).catch(function(){});
+    document.addEventListener('visibilitychange',reacquireWakeLock);
+  }
+  R.uiTimer=setInterval(updateRecUI,250);
+  // Watchdog: if no real data after 4 s, the sensors are blocked — stop and explain
+  R.watchdog=setTimeout(function(){
+    if(R.on&&R.samples.length<10){
+      stopRecording();
+      recWarn('⚠ Sensors are not delivering data ('+R.samples.length+' events in 4 s).<br><br>'+
+        'Most likely cause: this page is open inside an app preview or embedded browser, not the real browser. '+
+        'Open the file in <b>Safari</b> (iPhone) or <b>Chrome</b> (Android) directly, via an <b>https://</b> address.<br><br>'+
+        'Run the <b>🔍 TEST SENSORS</b> check at the top — it will show exactly which part is blocked.');
+    }
+  },4000);
+}
+
+function reacquireWakeLock(){
+  if(R.on&&document.visibilityState==='visible'&&'wakeLock' in navigator){
+    navigator.wakeLock.request('screen').then(function(wl){R.wakeLock=wl;}).catch(function(){});
+  }
+}
+
+function onMotion(e){
+  if(!R.on)return;
+  var t=performance.now()/1000-R.t0;
+  var g=e.accelerationIncludingGravity||{};
+  var c=e.acceleration; // OS sensor-fusion gravity removal — better than any software filter
+  var r=e.rotationRate||{};
+  var hasC=c&&c.x!==null&&c.x!==undefined;
+  if(hasC)R.cleanCount++;
+  R.samples.push({
+    t:t,
+    gx:g.x||0,gy:g.y||0,gz:g.z||0,
+    cx:hasC?c.x:null,cy:hasC?c.y:null,cz:hasC?c.z:null,
+    // rotationRate is deg/s in the spec — convert to rad/s to match MATLAB convention
+    rx:(r.alpha||0)*Math.PI/180,ry:(r.beta||0)*Math.PI/180,rz:(r.gamma||0)*Math.PI/180
+  });
+}
+
+function onGPS(pos){
+  if(!R.on)return;
+  var t=performance.now()/1000-R.t0;
+  R.gps.push({
+    t:t,
+    lat:pos.coords.latitude,lon:pos.coords.longitude,
+    speed:(pos.coords.speed!==null&&isFinite(pos.coords.speed))?pos.coords.speed:0,
+    alt:(pos.coords.altitude!==null&&isFinite(pos.coords.altitude))?pos.coords.altitude:0,
+    acc:pos.coords.accuracy||999
+  });
+}
+
+function updateRecUI(){
+  var el=performance.now()/1000-R.t0;
+  var m=Math.floor(el/60),s=Math.floor(el%60);
+  document.getElementById('rElapsed').textContent=m+':'+(s<10?'0':'')+s;
+  document.getElementById('rSamples').textContent=R.samples.length.toLocaleString();
+  document.getElementById('rHz').textContent=el>1?(R.samples.length/el).toFixed(0):'—';
+  var lastFix=R.gps.length?R.gps[R.gps.length-1]:null;
+  document.getElementById('rGps').textContent=lastFix?(lastFix.acc<30?'✓':'~'+lastFix.acc.toFixed(0)+'m'):'…';
+  // live vibration bar — instantaneous clean magnitude
+  var lv=0;
+  if(R.samples.length){
+    var s0=R.samples[R.samples.length-1];
+    if(s0.cx!==null)lv=Math.sqrt(s0.cx*s0.cx+s0.cy*s0.cy+s0.cz*s0.cz);
+    else lv=Math.abs(Math.sqrt(s0.gx*s0.gx+s0.gy*s0.gy+s0.gz*s0.gz)-9.81);
+  }
+  document.getElementById('liveFill').style.width=Math.min(100,lv/8*100)+'%';
+  document.getElementById('liveLabel').textContent=R.on?('live vibration '+lv.toFixed(2)+' m/s²'):'idle';
+}
+
+function stopRecording(){
+  R.on=false;
+  clearTimeout(R.watchdog);
+  window.removeEventListener('devicemotion',onMotion);
+  if(R.geoId!==null&&navigator.geolocation)navigator.geolocation.clearWatch(R.geoId);
+  if(R.wakeLock){try{R.wakeLock.release();}catch(e){}R.wakeLock=null;}
+  document.removeEventListener('visibilitychange',reacquireWakeLock);
+  clearInterval(R.uiTimer);
+  var btn=document.getElementById('recBtn');
+  btn.textContent='START';btn.classList.remove('recording');
+  document.getElementById('liveLabel').textContent='stopped · '+R.samples.length.toLocaleString()+' samples';
+  R.hasClean=R.samples.length>0&&R.cleanCount/R.samples.length>0.9;
+  if(R.samples.length>100){
+    document.getElementById('btnAnalyzeRec').disabled=false;
+  } else if(R.samples.length<10){
+    recWarn('⚠ Only '+R.samples.length+' sample'+(R.samples.length===1?'':'s')+' captured — the motion sensors are not reaching this page. Run 🔍 TEST SENSORS above to see what is blocked (usually: opened in an app preview instead of the browser, or not on HTTPS).');
+  } else {
+    recWarn('⚠ Only '+R.samples.length+' samples captured — too short to analyze. Record at least ~30 seconds.');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  CSV LOADING (legacy path — kept intact)
+// ══════════════════════════════════════════════════════════════════════════════
+function loadSlot(key,file){
+  if(!file)return;
+  var r=new FileReader();
+  r.onload=function(e){
+    slots[key]=parseCSV(e.target.result);
+    document.getElementById('fn_'+key).textContent=file.name+' · '+slots[key].rows.length.toLocaleString()+' rows';
+    document.getElementById('slot_'+key).classList.add('loaded');
+    document.getElementById('badge_'+key).textContent='✓';
+    document.getElementById('badge_'+key).className='slot-badge badge-ok';
+    document.getElementById('btnAnalyze').disabled=!(slots.acc&&slots.gyr);
+  };
+  r.readAsText(file);
+}
+function parseCSV(text){
+  var lines=text.trim().split('\n').filter(function(l){return l.trim();});
+  var headers=lines[0].split(',').map(function(h){return h.trim().replace(/"/g,'');});
+  var rows=[];
+  for(var i=1;i<lines.length;i++){
+    var vals=splitLine(lines[i]);var row={};
+    headers.forEach(function(h,j){row[h]=vals[j]?vals[j].trim().replace(/"/g,''):'0';});
+    rows.push(row);
+  }
+  return{headers:headers,rows:rows};
+}
+function splitLine(line){var res=[],cur='',inQ=false;for(var i=0;i<line.length;i++){var c=line[i];if(c==='"'){inQ=!inQ;}else if(c===','&&!inQ){res.push(cur);cur='';}else cur+=c;}res.push(cur);return res;}
+
+var MONTHS={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function parseTS(str){
+  if(!str||str==='0')return NaN;
+  str=str.trim().replace(/"/g,'');
+  var n=parseFloat(str);if(!isNaN(n)&&!/[A-Za-z:]/.test(str))return n;
+  var m=str.match(/(\d{1,2})-([A-Za-z]{3,})-(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})(\.\d+)?/);
+  if(m){var mo=MONTHS[m[2].toLowerCase().slice(0,3)];return Date.UTC(+m[3],mo,+m[1],+m[4],+m[5],+m[6],parseFloat(m[7]||'0')*1000)/1000;}
+  m=str.match(/^(\d+):(\d{2})(\.\d+)?$/);
+  if(m)return(+m[1])*60+(+m[2])+parseFloat(m[3]||'0');
+  m=str.match(/^(\d{1,2}):(\d{2}):(\d{2})(\.\d+)?$/);
+  if(m)return(+m[1])*3600+(+m[2])*60+(+m[3])+parseFloat(m[4]||'0');
+  var d=new Date(str);return isNaN(d)?NaN:d.getTime()/1000;
+}
+function extractSeries(data,tsCol,dataCols,sharedT0){
+  var rawT=data.rows.map(function(r){return parseTS(r[tsCol]);});
+  var valid=rawT.filter(function(t){return !isNaN(t)&&isFinite(t);});
+  var t,tsOk=true;
+  if(valid.length<2){t=data.rows.map(function(_,i){return i*0.1;});tsOk=false;}
+  else{var t0=sharedT0!==undefined?sharedT0:valid[0];t=rawT.map(function(v){return(!isNaN(v)&&isFinite(v))?v-t0:0;});}
+  var series={};
+  dataCols.forEach(function(c){series[c]=data.rows.map(function(r){return parseFloat(r[c])||0;});});
+  return{t:t,n:data.rows.length,tsOk:tsOk,s:series};
+}
+function findCol(h,pats,fb){for(var i=0;i<pats.length;i++){var m=h.find(function(c){return pats[i].test(c);});if(m)return m;}return fb||h[1]||null;}
+function detectCols(data,type){
+  var h=data.headers;
+  var ts=findCol(h,[/^timestamp$|^time$/i],h[0]);
+  if(type==='acc'||type==='gyr')return{ts:ts,x:findCol(h,[/^x$|^1$/],h[1]),y:findCol(h,[/^y$|^2$/],h[2]),z:findCol(h,[/^z$|^3$/],h[3])};
+  return{ts:ts,lat:findCol(h,[/^lat/i],null),lon:findCol(h,[/^lon|^lng/i],null),speed:findCol(h,[/^speed$/i],null),alt:findCol(h,[/^alt/i],null)};
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  DSP CORE (shared)
+// ══════════════════════════════════════════════════════════════════════════════
+function interp(srcT,srcV,tgtT){
+  var out=new Float64Array(tgtT.length),j=0;
+  for(var i=0;i<tgtT.length;i++){
+    var t=tgtT[i];while(j<srcT.length-2&&srcT[j+1]<t)j++;
+    if(j>=srcT.length-1){out[i]=srcV[j];continue;}
+    var dt=srcT[j+1]-srcT[j],f=dt===0?0:(t-srcT[j])/dt;
+    out[i]=srcV[j]+f*(srcV[j+1]-srcV[j]);
+  }
+  return out;
+}
+function lowPass(data,fc,fs){
+  var alpha=1/(1+1/(2*Math.PI*fc/fs));
+  var out=new Float64Array(data.length);out[0]=data[0]||0;
+  for(var i=1;i<data.length;i++)out[i]=out[i-1]+alpha*(data[i]-out[i-1]);
+  return out;
+}
+function applyFilter(mag,t,mode){
+  var dur=t[t.length-1]-t[0],fs=mag.length/Math.max(dur,1);
+  if(mode==='raw')return Array.from(mag);
+  var fc={light:0.5,med:0.2,heavy:0.05}[mode]||0.5;
+  return Array.from(lowPass(mag,fc,fs));
+}
+function computeRoughness(mag,t,segSecs){
+  var dur=t[t.length-1]-t[0],fs=mag.length/Math.max(dur,1);
+  var segSamples=Math.max(1,Math.round(segSecs*fs)),numSegs=Math.ceil(mag.length/segSamples);
+  var segs=[];
+  for(var i=0;i<numSegs;i++){
+    var sl=i*segSamples,sr=Math.min(mag.length,(i+1)*segSamples);
+    var sumSq=0;for(var k=sl;k<sr;k++)sumSq+=mag[k]*mag[k];
+    var rmsVal=Math.sqrt(sumSq/Math.max(sr-sl,1));
+    var tMid=t[Math.min(sl+Math.floor((sr-sl)/2),t.length-1)];
+    segs.push({t:tMid,rms:rmsVal,score:Math.min(100,Math.round(rmsVal/10*100))});
+  }
+  return segs;
+}
+function roughnessColor(score,a){
+  if(score<20)return'rgba(48,209,88,'+a+')';
+  if(score<40)return'rgba(255,159,10,'+a+')';
+  return'rgba(255,69,58,'+a+')';
+}
+function correctOrientation(ax,ay,az,gx,gy,gz,t){
+  var n=ax.length,cax=new Float64Array(n),cay=new Float64Array(n),caz=new Float64Array(n);
+  var gvx=ax[0],gvy=ay[0],gvz=az[0],oc=0;
+  for(var i=0;i<n;i++){
+    var dt=i>0?Math.min(Math.abs(t[i]-t[i-1]),0.5):0.1;
+    gvx=0.97*(gvx+gx[i]*dt)+0.03*ax[i];gvy=0.97*(gvy+gy[i]*dt)+0.03*ay[i];gvz=0.97*(gvz+gz[i]*dt)+0.03*az[i];
+    if(Math.sqrt(gx[i]*gx[i]+gy[i]*gy[i]+gz[i]*gz[i])>1.5)oc++;
+    cax[i]=ax[i]-gvx*0.12;cay[i]=ay[i]-gvy*0.12;caz[i]=az[i]-gvz*0.12;
+  }
+  return{cax:cax,cay:cay,caz:caz,corrPct:Math.round((1-oc/n)*100)};
+}
+function downsampleSeries(series,t,targetHz){
+  var dur=t[t.length-1]-t[0];
+  var actualHz=t.length/Math.max(dur,1);
+  if(actualHz<=targetHz*1.2)return{series:series,t:t};
+  var factor=Math.round(actualHz/targetHz);
+  var keys=Object.keys(series);
+  var newT=[],newSeries={};
+  keys.forEach(function(k){newSeries[k]=[];});
+  for(var i=0;i<t.length;i+=factor){
+    var end=Math.min(t.length,i+factor);
+    newT.push(t[Math.floor((i+end)/2)]);
+    keys.forEach(function(k){
+      var sum=0;for(var j=i;j<end;j++)sum+=series[k][j];
+      newSeries[k].push(sum/(end-i));
+    });
+  }
+  return{series:newSeries,t:newT};
+}
+function computeStats(cax,cay,caz,speed,t,rawAx,rawAy,rawAz){
+  var n=caz.length;
+  var mag=new Array(n);
+  for(var i=0;i<n;i++)mag[i]=Math.sqrt(cax[i]*cax[i]+cay[i]*cay[i]+caz[i]*caz[i]);
+  var rawMag=null;
+  if(rawAx){rawMag=new Array(n);for(var i2=0;i2<n;i2++)rawMag[i2]=Math.sqrt(rawAx[i2]*rawAx[i2]+rawAy[i2]*rawAy[i2]+rawAz[i2]*rawAz[i2]);}
+  function rms(a){var s=0;for(var k=0;k<a.length;k++)s+=a[k]*a[k];return Math.sqrt(s/a.length);}
+  var rawRms=rawMag?rms(rawMag):0;
+  var dur=Math.max(t[n-1]-t[0],0.001),fs=n/dur;
+  var magFilt=Array.from(lowPass(mag,0.5,fs));
+  var bins=[0,20,40,60,80,100,120];
+  var speedCorr=speed?bins.map(function(lo,i){
+    var hi=bins[i+1]||999;
+    var inB=magFilt.filter(function(_,j){return speed[j]*3.6>=lo&&speed[j]*3.6<hi;});
+    return inB.length>10?{speed:lo,rms:rms(inB)}:null;
+  }).filter(Boolean):[];
+  var cr=0;for(var i3=1;i3<caz.length;i3++)if(caz[i3-1]*caz[i3]<0)cr++;
+  var domFreq=isFinite(cr/(2*dur))?(cr/(2*dur)).toFixed(1):'—';
+  return{rmsX:rms(cax),rmsY:rms(cay),rmsZ:rms(caz),rmsTotal:rms(mag),rawRms:rawRms,
+    peak:Math.max.apply(null,mag),duration:dur,hz:(n/dur).toFixed(1),domFreq:domFreq,
+    samples:n,speedCorr:speedCorr,mag:mag,rawMag:rawMag,t:t,fs:fs};
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  EVENT DETECTION V2 — classifies bump / pothole / Botts' dots, rejects
+//  suspension oscillation, tunable sensitivity
+// ══════════════════════════════════════════════════════════════════════════════
+function detectEvents(cax,cay,caz,t,speed,alt,lat,lon,opts){
+  opts=opts||{};
+  var TH=opts.thresh||3.0;      // spike threshold × rolling baseline
+  var MINDISP=opts.minDisp||5;  // minimum vertical displacement in cm
+  var n=caz.length;
+  var mag=new Float64Array(n);
+  for(var i=0;i<n;i++)mag[i]=Math.sqrt(cax[i]*cax[i]+cay[i]*cay[i]+caz[i]*caz[i]);
+  var dur=t[n-1]-t[0],fs=n/Math.max(dur,1);
+  // rolling RMS baseline — 3 s window
+  var bw=Math.max(1,Math.round(fs*3));
+  var baseline=new Float64Array(n),sumSq=0;
+  for(var i0=0;i0<n;i0++){
+    sumSq+=mag[i0]*mag[i0];
+    if(i0>=bw)sumSq-=mag[i0-bw]*mag[i0-bw];
+    baseline[i0]=Math.sqrt(sumSq/Math.min(i0+1,bw));
+  }
+  function dispAround(peakIdx){
+    var dStart=Math.max(0,peakIdx-Math.max(1,Math.round(fs*0.3)));
+    var dEnd=Math.min(n-1,peakIdx+Math.max(1,Math.round(fs*0.5)));
+    var vel=0,pos=0;
+    for(var d=dStart+1;d<=dEnd;d++){var dt2=Math.min(Math.abs(t[d]-t[d-1]),0.1);vel+=caz[d]*dt2;pos+=vel*dt2;}
+    return Math.abs(pos)*100;
+  }
+  var minGap=Math.max(1,Math.round(fs*3));
+  var clearW=Math.max(1,Math.round(fs*2));
+  var evs=[],lastEnd=0;
+  for(var i=clearW;i<n-10;i++){
+    if(i-lastEnd<minGap)continue;
+    var bl=baseline[i];
+    if(mag[i]<bl*TH)continue;
+    // Pre-event isolation: an isolated spike is a road feature; a spike that
+    // rises out of continuous elevated vibration is mechanical/suspension
+    // oscillation and is rejected here (it shows in RMS/dominant-Hz instead)
+    var preOk=true,limit=bl*1.8;
+    for(var p=i-clearW;p<i;p++){if(mag[p]>limit){preOk=false;break;}}
+    if(!preOk)continue;
+    // Peak within 0.8 s
+    var wEnd=Math.min(n-1,i+Math.max(1,Math.round(fs*0.8)));
+    var peakIdx=i,peakVal=mag[i];
+    for(var j=i+1;j<=wEnd;j++){if(mag[j]>peakVal){peakVal=mag[j];peakIdx=j;}}
+    // ── Botts' dots / rumble strip: 3+ similar evenly-spaced small impacts ──
+    var dotWin=Math.min(n-1,i+Math.round(fs*4));
+    var dotPeaks=[],lastPk=-999;
+    for(var q=i;q<=dotWin;q++){
+      if(mag[q]>bl*TH*0.75&&(q===0||mag[q]>=mag[q-1])&&(q===n-1||mag[q]>=mag[q+1])){
+        if(t[q]-lastPk>0.08){dotPeaks.push(q);lastPk=t[q];}
+      }
+    }
+    if(dotPeaks.length>=3){
+      var sp=[];for(var s2=1;s2<dotPeaks.length;s2++)sp.push(t[dotPeaks[s2]]-t[dotPeaks[s2-1]]);
+      var mean=sp.reduce(function(a,b){return a+b;},0)/sp.length;
+      var vari=sp.reduce(function(a,b){return a+(b-mean)*(b-mean);},0)/sp.length;
+      var cv=mean>0?Math.sqrt(vari)/mean:9;
+      var firstDisp=dispAround(dotPeaks[0]);
+      // regular spacing + small individual displacement = dots/rumble strip
+      if(cv<0.45&&firstDisp<4.5&&mean<1.2){
+        evs.push({type:'dots',label:"Botts' Dots / Rumble Strip",icon:'⚪',time:t[dotPeaks[0]],
+          peak:peakVal,count:dotPeaks.length,dispCm:firstDisp.toFixed(1),conf:'periodic ×'+dotPeaks.length,
+          speed:speed?(speed[dotPeaks[0]]*3.6).toFixed(0):null,
+          lat:lat?lat[dotPeaks[0]]:null,lon:lon?lon[dotPeaks[0]]:null});
+        lastEnd=dotWin;i=dotWin;continue;
+      }
+    }
+    // ── Displacement gate — rejects texture/rattle noise ──
+    var dispCm=dispAround(peakIdx);
+    if(dispCm<MINDISP){lastEnd=wEnd;i=wEnd;continue;}
+    // ── Onset polarity: pothole = wheel drops first (−Z), bump = lifts first ──
+    var onsetEnd=Math.min(n-1,i+Math.max(1,Math.round(fs*0.1)));
+    var onsetSum=0,onsetCnt=0;
+    for(var o=i;o<=onsetEnd;o++){onsetSum+=caz[o];onsetCnt++;}
+    var onsetSign=onsetCnt?onsetSum/onsetCnt:caz[peakIdx];
+    // ── Double-axle check: second impact where wheelbase/speed matches ──
+    var axles=false;
+    if(speed&&speed[peakIdx]>1){
+      var v=speed[peakIdx]; // m/s
+      var lo=Math.round(peakIdx+fs*(1.8/v)),hi=Math.min(n-1,Math.round(peakIdx+fs*(3.8/v)));
+      for(var a2=lo;a2<=hi;a2++){if(mag[a2]>peakVal*0.45){axles=true;break;}}
+    }
+    // ── Elevation change → bridge ──
+    var altChg=0;
+    if(alt){
+      var aStart=Math.max(0,peakIdx-Math.round(fs*2)),aEnd=Math.min(n,peakIdx+Math.round(fs*2));
+      var aMin=alt[aStart],aMax=alt[aStart];
+      for(var a=aStart;a<aEnd;a++){if(alt[a]<aMin)aMin=alt[a];if(alt[a]>aMax)aMax=alt[a];}
+      altChg=aMax-aMin;
+    }
+    var type,label,icon;
+    if(altChg>3){type='bridge';label='Bridge / Elevation Change';icon='🌉';}
+    else if(onsetSign<0){type='pothole';label='Pothole';icon='🕳️';}
+    else{type='bump';label='Speed Bump';icon='🔶';}
+    evs.push({type:type,label:label,icon:icon,time:t[peakIdx],peak:peakVal,
+      dispCm:dispCm.toFixed(1),conf:axles?'both axles':'',
+      speed:speed?(speed[peakIdx]*3.6).toFixed(0):null,
+      lat:lat?lat[peakIdx]:null,lon:lon?lon[peakIdx]:null});
+    lastEnd=wEnd;i=wEnd;
+  }
+  return evs;
+}
+
+function detectStructures(t,alt,lat,lon,speed){
+  var structs=[];
+  if(!alt||alt.length<10)return structs;
+  var n=alt.length,dur=t[n-1]-t[0],fs=n/Math.max(dur,1);
+  var w=Math.max(1,Math.round(fs*8)),minGap=Math.max(1,Math.round(fs*15)),lastEnd=0;
+  for(var i=w;i<n-w;i++){
+    if(i-lastEnd<minGap)continue;
+    var sumB=0,sumA=0,cntB=0,cntA=0;
+    for(var b=Math.max(0,i-w);b<i;b++){sumB+=alt[b];cntB++;}
+    for(var a=i;a<Math.min(n,i+w);a++){sumA+=alt[a];cntA++;}
+    if(cntB===0||cntA===0)continue;
+    var avgB=sumB/cntB,avgA=sumA/cntA,peak=alt[i];
+    var riseB=peak-avgB,riseA=peak-avgA;
+    var dipB=avgB-peak,dipA=avgA-peak;
+    var altChg=0,sLabel='';
+    if(riseB>2.5&&riseA>2.5){altChg=Math.max(riseB,riseA);}
+    else if(dipB>2.5&&dipA>2.5){altChg=Math.max(dipB,dipA);sLabel=' / Underpass';}
+    if(altChg>0){
+      structs.push({type:'bridge',label:'Bridge'+sLabel,icon:'🌉',time:t[i],
+        altChange:altChg.toFixed(1),speed:speed?(speed[i]*3.6).toFixed(0):null,
+        lat:lat?lat[i]:null,lon:lon?lon[i]:null});
+      lastEnd=i+w;i+=w;
+    }
+  }
+  return structs;
+}
+function detectTunnels(t,lat,lon){
+  var tunnels=[];
+  if(!lat||lat.length<10)return tunnels;
+  var n=lat.length,inDrop=false,dropStart=0;
+  for(var i=1;i<n;i++){
+    var moved=Math.abs(lat[i]-lat[i-1])+Math.abs(lon[i]-lon[i-1]);
+    if(moved<0.00001&&!inDrop){inDrop=true;dropStart=i;}
+    else if(moved>=0.00001&&inDrop){
+      var dropDur=t[i]-t[dropStart];
+      if(dropDur>3&&dropDur<120){
+        var mid=Math.round((dropStart+i)/2);
+        tunnels.push({type:'tunnel',label:'Possible Tunnel / GPS Loss',icon:'🚇',
+          time:t[mid],duration:dropDur.toFixed(0),lat:lat[dropStart],lon:lon[dropStart],speed:null});
+      }
+      inDrop=false;
+    }
+  }
+  return tunnels;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ANALYSIS ENTRY POINTS
+// ══════════════════════════════════════════════════════════════════════════════
+function runAnalysisCSV(){
+  document.getElementById('panel_csv').style.display='none';
+  document.getElementById('panel_rec').style.display='none';
+  document.getElementById('tabs').style.display='none';
+  setProgress(10,'Extracting channels...');
+  setTimeout(function(){
+    var accC=detectCols(slots.acc,'acc');
+    var gyrC=detectCols(slots.gyr,'gyr');
+    var posC=slots.pos?detectCols(slots.pos,'pos'):null;
+    var t0list=[parseTS(slots.acc.rows[0][accC.ts]),parseTS(slots.gyr.rows[0][gyrC.ts])];
+    if(posC)t0list.push(parseTS(slots.pos.rows[0][posC.ts]));
+    var sharedT0=Math.min.apply(null,t0list.filter(function(v){return !isNaN(v)&&isFinite(v);}));
+    var accSeries=extractSeries(slots.acc,accC.ts,[accC.x,accC.y,accC.z],sharedT0);
+    var gyrSeries=extractSeries(slots.gyr,gyrC.ts,[gyrC.x,gyrC.y,gyrC.z],sharedT0);
+    var accDS=downsampleSeries(accSeries.s,accSeries.t,25);
+    var gyrDS=downsampleSeries(gyrSeries.s,gyrSeries.t,25);
+    var accT=accDS.t,accDSs=accDS.series,gyrDSs=gyrDS.series;
+    setProgress(20,'Interpolating gyro...');
+    var gyrX=interp(gyrDS.t,gyrDSs[gyrC.x],accT);
+    var gyrY=interp(gyrDS.t,gyrDSs[gyrC.y],accT);
+    var gyrZ=interp(gyrDS.t,gyrDSs[gyrC.z],accT);
+    var speed=null,alt=null,lat=null,lon=null,posPts=null;
+    if(slots.pos&&posC&&posC.lat){
+      var cols=[posC.lat,posC.lon,posC.speed,posC.alt].filter(Boolean);
+      var posSeries=extractSeries(slots.pos,posC.ts,cols,sharedT0);
+      if(posC.speed)speed=interp(posSeries.t,posSeries.s[posC.speed],accT);
+      if(posC.alt)alt=interp(posSeries.t,posSeries.s[posC.alt],accT);
+      if(posC.lat)lat=interp(posSeries.t,posSeries.s[posC.lat],accT);
+      if(posC.lon)lon=interp(posSeries.t,posSeries.s[posC.lon],accT);
+      posPts=slots.pos.rows.map(function(r){return{lat:parseFloat(r[posC.lat])||0,lon:parseFloat(r[posC.lon])||0};});
+    }
+    setProgress(30,'Removing gravity & correcting orientation...');
+    setTimeout(function(){
+      var axArr=accDSs[accC.x],ayArr=accDSs[accC.y],azArr=accDSs[accC.z];
+      var nn=axArr.length,sumX=0,sumY=0,sumZ=0;
+      for(var k=0;k<nn;k++){sumX+=axArr[k];sumY+=ayArr[k];sumZ+=azArr[k];}
+      var mX=sumX/nn,mY=sumY/nn,mZ=sumZ/nn;
+      var dcX=axArr.map(function(v){return v-mX;});
+      var dcY=ayArr.map(function(v){return v-mY;});
+      var dcZ=azArr.map(function(v){return v-mZ;});
+      var cor=correctOrientation(dcX,dcY,dcZ,gyrX,gyrY,gyrZ,accT);
+      finishAnalysis({
+        cax:cor.cax,cay:cor.cay,caz:cor.caz,
+        rawX:axArr,rawY:ayArr,rawZ:azArr,
+        t:accT,speed:speed,alt:alt,lat:lat,lon:lon,posPts:posPts,
+        corrPct:cor.corrPct,method:'complementary filter',
+        accN:accT.length,gyrN:gyrDS.t.length,tsOk:accSeries.tsOk,source:'CSV'
+      });
+    },200);
+  },100);
+}
+
+function analyzeRecording(){
+  document.getElementById('panel_csv').style.display='none';
+  document.getElementById('panel_rec').style.display='none';
+  document.getElementById('tabs').style.display='none';
+  setProgress(10,'Preparing recorded data...');
+  setTimeout(function(){
+    var S=R.samples;
+    var t=S.map(function(s){return s.t;});
+    var rawSeries={gx:S.map(function(s){return s.gx;}),gy:S.map(function(s){return s.gy;}),gz:S.map(function(s){return s.gz;}),
+                   rx:S.map(function(s){return s.rx;}),ry:S.map(function(s){return s.ry;}),rz:S.map(function(s){return s.rz;})};
+    if(R.hasClean){
+      rawSeries.cx=S.map(function(s){return s.cx||0;});
+      rawSeries.cy=S.map(function(s){return s.cy||0;});
+      rawSeries.cz=S.map(function(s){return s.cz||0;});
+    }
+    setProgress(25,'Downsampling to 25 Hz...');
+    var ds=downsampleSeries(rawSeries,t,25);
+    var dT=ds.t,dS=ds.series;
+    // GPS → interpolate onto acc timebase
+    var speed=null,alt=null,lat=null,lon=null,posPts=null;
+    var goodGps=R.gps.filter(function(g){return g.acc<100&&isFinite(g.lat)&&isFinite(g.lon)&&g.lat!==0;});
+    if(goodGps.length>=2){
+      var gT=goodGps.map(function(g){return g.t;});
+      speed=interp(gT,goodGps.map(function(g){return g.speed;}),dT);
+      alt=interp(gT,goodGps.map(function(g){return g.alt;}),dT);
+      lat=interp(gT,goodGps.map(function(g){return g.lat;}),dT);
+      lon=interp(gT,goodGps.map(function(g){return g.lon;}),dT);
+      posPts=goodGps.map(function(g){return{lat:g.lat,lon:g.lon};});
+    }
+    setProgress(45,'Gravity removal...');
+    setTimeout(function(){
+      var cax,cay,caz,corrPct,method;
+      if(R.hasClean){
+        // OS sensor fusion already removed gravity — just remove residual DC drift
+        var n=dS.cx.length,sx=0,sy=0,sz=0;
+        for(var k=0;k<n;k++){sx+=dS.cx[k];sy+=dS.cy[k];sz+=dS.cz[k];}
+        var mx2=sx/n,my2=sy/n,mz2=sz/n;
+        cax=dS.cx.map(function(v){return v-mx2;});
+        cay=dS.cy.map(function(v){return v-my2;});
+        caz=dS.cz.map(function(v){return v-mz2;});
+        corrPct=100;method='OS sensor fusion';
+      } else {
+        // Fallback: DC removal + complementary filter with recorded gyro
+        var nn=dS.gx.length,sumX=0,sumY=0,sumZ=0;
+        for(var k2=0;k2<nn;k2++){sumX+=dS.gx[k2];sumY+=dS.gy[k2];sumZ+=dS.gz[k2];}
+        var mX=sumX/nn,mY=sumY/nn,mZ=sumZ/nn;
+        var dcX=dS.gx.map(function(v){return v-mX;});
+        var dcY=dS.gy.map(function(v){return v-mY;});
+        var dcZ=dS.gz.map(function(v){return v-mZ;});
+        var cor=correctOrientation(dcX,dcY,dcZ,dS.rx,dS.ry,dS.rz,dT);
+        cax=cor.cax;cay=cor.cay;caz=cor.caz;corrPct=cor.corrPct;method='complementary filter (fallback)';
+      }
+      finishAnalysis({
+        cax:cax,cay:cay,caz:caz,
+        rawX:dS.gx,rawY:dS.gy,rawZ:dS.gz,
+        t:dT,speed:speed,alt:alt,lat:lat,lon:lon,posPts:posPts,
+        corrPct:corrPct,method:method,
+        accN:dT.length,gyrN:dT.length,tsOk:true,source:'LIVE'
+      });
+    },200);
+  },100);
+}
+
+// Shared back half of the pipeline
+function finishAnalysis(g){
+  setProgress(60,'Computing stats & roughness...');
+  setTimeout(function(){
+    g.stats=computeStats(g.cax,g.cay,g.caz,g.speed,g.t,g.rawX,g.rawY,g.rawZ);
+    g.roughness=computeRoughness(g.stats.mag,g.t,10);
+    setProgress(75,'Detecting & classifying events...');
+    setTimeout(function(){
+      var opts=currentDetectOpts();
+      var spikeEvs=detectEvents(g.cax,g.cay,g.caz,g.t,g.speed,g.alt,g.lat,g.lon,opts);
+      var structEvs=detectStructures(g.t,g.alt,g.lat,g.lon,g.speed);
+      var tunnelEvs=detectTunnels(g.t,g.lat,g.lon);
+      g.events=spikeEvs.concat(structEvs).concat(tunnelEvs);
+      g.events.sort(function(a,b){return a.time-b.time;});
+      G=g;
+      setProgress(90,'Rendering...');
+      setTimeout(function(){
+        renderResults();
+        buildMap();
+        setProgress(100,'Done');
+        document.getElementById('progressWrap').classList.remove('show');
+        document.getElementById('results').classList.add('show');
+      },150);
+    },150);
+  },150);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  TUNING — re-run detection live without re-analyzing
+// ══════════════════════════════════════════════════════════════════════════════
+function currentDetectOpts(){
+  return{thresh:(+document.getElementById('tThresh').value)/10,
+         minDisp:+document.getElementById('tDisp').value};
+}
+function tuneLabel(){
+  document.getElementById('lblThresh').textContent=((+document.getElementById('tThresh').value)/10).toFixed(1)+'×';
+  document.getElementById('lblDisp').textContent=document.getElementById('tDisp').value+' cm';
+}
+function reapplyDetection(){
+  if(!G)return;
+  var opts=currentDetectOpts();
+  var spikeEvs=detectEvents(G.cax,G.cay,G.caz,G.t,G.speed,G.alt,G.lat,G.lon,opts);
+  var structEvs=detectStructures(G.t,G.alt,G.lat,G.lon,G.speed);
+  var tunnelEvs=detectTunnels(G.t,G.lat,G.lon);
+  G.events=spikeEvs.concat(structEvs).concat(tunnelEvs);
+  G.events.sort(function(a,b){return a.time-b.time;});
+  renderEvents();
+  buildMap();
+  document.getElementById('diagCard').innerHTML=buildDiagnostic(G.stats,G.events,G.roughness);
+  var cards=document.querySelectorAll('#statRow .stat-card .stat-val');
+  if(cards.length===4)cards[3].textContent=G.events.length;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  HEALTH / RENDERING
+// ══════════════════════════════════════════════════════════════════════════════
+var HEALTH=[
+  {max:2.0,cls:'healthy',label:'Healthy',color:'#30d158',desc:'Vehicle vibration within normal range. No mechanical concerns indicated.'},
+  {max:4.0,cls:'monitor',label:'Monitor',color:'#ff9f0a',desc:'Slightly elevated. Early signs of mount or bushing wear possible.'},
+  {max:7.0,cls:'attention',label:'Attention Needed',color:'#ff6b35',desc:'Elevated baseline. Worn engine/transmission mounts or suspension bushings likely. Recommend inspection.'},
+  {max:999,cls:'poor',label:'Poor Condition',color:'#ff453a',desc:'High vibration baseline. Significant mechanical wear detected. Inspection recommended soon.'}
+];
+function getHealthTier(rms){for(var i=0;i<HEALTH.length;i++){if(rms<=HEALTH[i].max)return HEALTH[i];}return HEALTH[HEALTH.length-1];}
+
+function renderVehicleHealth(rawRms,cleanRms){
+  var tier=getHealthTier(rawRms);
+  var pct=Math.min(100,Math.round(rawRms/12*100));
+  document.getElementById('vehicleHealth').innerHTML=
+    '<div class="health-split">'+
+      '<div class="health-mini"><div class="health-mini-val" style="color:'+tier.color+'">'+rawRms.toFixed(2)+'</div><div class="health-mini-key">RAW RMS m/s²</div><div class="health-mini-sub">gravity included — vehicle health indicator</div></div>'+
+      '<div class="health-mini"><div class="health-mini-val" style="color:#30d158">'+cleanRms.toFixed(2)+'</div><div class="health-mini-key">CLEAN RMS m/s²</div><div class="health-mini-sub">gravity removed — road & vibration analysis</div></div>'+
+    '</div>'+
+    '<div class="health-banner '+tier.cls+'">'+
+      '<div><div class="hb-label">Vehicle Vibration Health</div>'+
+      '<div class="hb-verdict" style="color:'+tier.color+'">'+tier.label+'</div>'+
+      '<div class="hb-desc">'+tier.desc+'</div>'+
+      '<div class="hb-gauge"><div class="hb-gauge-fill" style="width:'+pct+'%;background:'+tier.color+'"></div></div>'+
+      '<div class="hb-ticks"><span style="color:#30d158">0 — Healthy</span><span style="color:#ff9f0a">2</span><span style="color:#ff6b35">4</span><span style="color:#ff453a">7 — Poor — 12+</span></div></div>'+
+      '<div><div class="hb-val" style="color:'+tier.color+'">'+rawRms.toFixed(1)+'</div><div class="hb-unit">m/s² raw</div></div>'+
+    '</div>';
+}
+
+function setFilter(mode){
+  currentFilter=mode;
+  ['raw','light','med','heavy'].forEach(function(m){document.getElementById('f_'+m).classList.toggle('active',m===mode);});
+  if(G)redrawTimeChart();
+}
+function toggleOverlay(){
+  showOverlay=!showOverlay;
+  document.getElementById('f_overlay').classList.toggle('active',showOverlay);
+  if(G)redrawTimeChart();
+}
+function redrawTimeChart(){
+  var stats=G.stats;
+  var filtered=applyFilter(stats.mag,stats.t,currentFilter);
+  var step=Math.max(1,Math.floor(filtered.length/2000));
+  var magD=filtered.filter(function(_,i){return i%step===0;});
+  var tD=stats.t.filter(function(_,i){return i%step===0;});
+  var datasets=[{data:magD,label:'Clean vibration',borderColor:'#ff9f0a',borderWidth:currentFilter==='raw'?0.8:1.5,pointRadius:0,fill:true,backgroundColor:'rgba(255,159,10,0.08)',tension:0.2,order:1}];
+  if(showOverlay&&stats.rawMag){
+    var rawD=applyFilter(stats.rawMag,stats.t,'light').filter(function(_,i){return i%step===0;});
+    datasets.unshift({data:rawD,label:'Raw (with gravity)',borderColor:'rgba(255,69,58,0.45)',borderWidth:1,pointRadius:0,fill:false,tension:0.2,order:2,backgroundColor:'transparent'});
+  }
+  if(charts.time)charts.time.destroy();
+  charts.time=new Chart(document.getElementById('chartTime').getContext('2d'),{
+    type:'line',data:{labels:tD.map(function(t){return t.toFixed(1)+'s';}),datasets:datasets},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:showOverlay,labels:{color:'#636366',font:{family:'DM Mono',size:9}}}},
+      scales:{x:{ticks:{color:'#636366',maxTicksLimit:10,font:{family:'DM Mono',size:9}},grid:{color:'#3a3a3c'}},
+              y:{ticks:{color:'#636366',font:{family:'DM Mono',size:9}},grid:{color:'#3a3a3c'}}}}
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MAP — hardened: validates points, wrapped in try/catch, never wiped silently
+// ══════════════════════════════════════════════════════════════════════════════
+var ECOLS={pothole:'#ff453a',bump:'#ff6b35',bridge:'#0a84ff',tunnel:'#a855f7',dots:'#ffd60a'};
+function buildMap(){
+  var el=document.getElementById('routeMap');
+  try{
+    var posPts=G?G.posPts:null;
+    var events=G?G.events:[];
+    var roughness=G?G.roughness:null;
+    if(!posPts||!posPts.length){
+      el.innerHTML='<div style="height:100px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:var(--text3)">No GPS data — record with location permission or load Position.csv</div>';
+      return;
+    }
+    var pts=posPts.filter(function(p){
+      return isFinite(p.lat)&&isFinite(p.lon)&&p.lat!==0&&p.lon!==0&&Math.abs(p.lat)<=90&&Math.abs(p.lon)<=180;
+    });
+    if(pts.length<2){
+      el.innerHTML='<div style="height:80px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:var(--text3)">⚠ Not enough valid GPS points ('+pts.length+')</div>';
+      return;
+    }
+    var W=860,H=390,PAD=40;
+    var minLat=Infinity,maxLat=-Infinity,minLon=Infinity,maxLon=-Infinity;
+    for(var i=0;i<pts.length;i++){
+      if(pts[i].lat<minLat)minLat=pts[i].lat;if(pts[i].lat>maxLat)maxLat=pts[i].lat;
+      if(pts[i].lon<minLon)minLon=pts[i].lon;if(pts[i].lon>maxLon)maxLon=pts[i].lon;
+    }
+    var latR=maxLat-minLat||0.001,lonR=maxLon-minLon||0.001;
+    var scale=Math.min((H-PAD*2)/latR,(W-PAD*2)/lonR);
+    var offX=(W-lonR*scale)/2,offY=(H-latR*scale)/2;
+    function sx(lon){return offX+(lon-minLon)*scale;}
+    function sy(lat){return H-offY-(lat-minLat)*scale;}
+    var step=Math.max(1,Math.floor(pts.length/800));
+    var spts=pts.filter(function(_,i){return i%step===0||i===pts.length-1;});
+    // Route colored by roughness segments
+    var routeSegs='';
+    if(roughness&&roughness.length>1){
+      var segSize=Math.ceil(spts.length/roughness.length);
+      roughness.forEach(function(seg,si){
+        var sl=si*segSize,sr=Math.min(spts.length,(si+1)*segSize+1);
+        var sp=spts.slice(sl,sr);
+        if(sp.length>1){
+          var ptsStr=sp.map(function(p){return sx(p.lon).toFixed(1)+','+sy(p.lat).toFixed(1);}).join(' ');
+          routeSegs+='<polyline points="'+ptsStr+'" fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>';
+          routeSegs+='<polyline points="'+ptsStr+'" fill="none" stroke="'+roughnessColor(seg.score,1)+'" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>';
+        }
+      });
+    } else {
+      var allStr=spts.map(function(p){return sx(p.lon).toFixed(1)+','+sy(p.lat).toFixed(1);}).join(' ');
+      routeSegs='<polyline points="'+allStr+'" fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="6" stroke-linejoin="round"/>'+
+                '<polyline points="'+allStr+'" fill="none" stroke="#ff9f0a" stroke-width="3.5" stroke-linejoin="round"/>';
+    }
+    var evDots=(events||[]).filter(function(e){
+      return e.lat!==null&&e.lat!==undefined&&isFinite(e.lat)&&isFinite(e.lon)&&e.lat!==0&&Math.abs(e.lat)<=90;
+    }).map(function(e){
+      var col=ECOLS[e.type]||'#8e8e93';
+      var r=(e.type==='bridge'||e.type==='tunnel')?8:(e.type==='dots')?6:Math.min(10,Math.max(5,(e.peak||1)*0.6));
+      var cx=sx(e.lon).toFixed(1),cy=sy(e.lat).toFixed(1);
+      var tip=e.type==='tunnel'?e.label+' ~'+e.duration+'s':
+              e.type==='bridge'?e.label+' ~'+e.altChange+'m':
+              e.type==='dots'?e.label+' ×'+e.count:
+              e.label+' '+(e.peak||0).toFixed(2)+' m/s²';
+      return'<circle cx="'+cx+'" cy="'+cy+'" r="'+(r+4)+'" fill="'+col+'" opacity="0.25"/>'+
+        '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="'+col+'" stroke="white" stroke-width="1.5"><title>'+tip+'</title></circle>';
+    }).join('');
+    el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;min-height:280px;display:block;background:#1a2332">'+
+      '<rect width="'+W+'" height="'+H+'" fill="#1a2332"/>'+
+      '<line x1="0" y1="'+Math.round(H/4)+'" x2="'+W+'" y2="'+Math.round(H/4)+'" stroke="#ffffff08"/>'+
+      '<line x1="0" y1="'+Math.round(H/2)+'" x2="'+W+'" y2="'+Math.round(H/2)+'" stroke="#ffffff08"/>'+
+      '<line x1="0" y1="'+Math.round(H*3/4)+'" x2="'+W+'" y2="'+Math.round(H*3/4)+'" stroke="#ffffff08"/>'+
+      '<line x1="'+Math.round(W/4)+'" y1="0" x2="'+Math.round(W/4)+'" y2="'+H+'" stroke="#ffffff08"/>'+
+      '<line x1="'+Math.round(W/2)+'" y1="0" x2="'+Math.round(W/2)+'" y2="'+H+'" stroke="#ffffff08"/>'+
+      '<line x1="'+Math.round(W*3/4)+'" y1="0" x2="'+Math.round(W*3/4)+'" y2="'+H+'" stroke="#ffffff08"/>'+
+      '<text x="6" y="14" fill="#ffffff22" font-family="monospace" font-size="8">'+maxLat.toFixed(4)+'°</text>'+
+      '<text x="6" y="'+(H-30)+'" fill="#ffffff22" font-family="monospace" font-size="8">'+minLat.toFixed(4)+'°</text>'+
+      routeSegs+
+      '<circle cx="'+sx(pts[0].lon).toFixed(1)+'" cy="'+sy(pts[0].lat).toFixed(1)+'" r="9" fill="rgba(48,209,88,0.3)"/>'+
+      '<circle cx="'+sx(pts[0].lon).toFixed(1)+'" cy="'+sy(pts[0].lat).toFixed(1)+'" r="6" fill="#30d158" stroke="white" stroke-width="2"><title>Start</title></circle>'+
+      '<circle cx="'+sx(pts[pts.length-1].lon).toFixed(1)+'" cy="'+sy(pts[pts.length-1].lat).toFixed(1)+'" r="9" fill="rgba(255,69,58,0.3)"/>'+
+      '<circle cx="'+sx(pts[pts.length-1].lon).toFixed(1)+'" cy="'+sy(pts[pts.length-1].lat).toFixed(1)+'" r="6" fill="#ff453a" stroke="white" stroke-width="2"><title>End</title></circle>'+
+      evDots+
+      '<rect x="0" y="'+(H-24)+'" width="'+W+'" height="24" fill="rgba(0,0,0,0.6)"/>'+
+      '<circle cx="14" cy="'+(H-12)+'" r="4" fill="#30d158"/><text x="22" y="'+(H-8)+'" fill="#8e8e93" font-family="monospace" font-size="9">Start</text>'+
+      '<circle cx="60" cy="'+(H-12)+'" r="4" fill="#ff453a"/><text x="68" y="'+(H-8)+'" fill="#8e8e93" font-family="monospace" font-size="9">End</text>'+
+      '<rect x="108" y="'+(H-17)+'" width="16" height="4" fill="#30d158" rx="2"/><text x="128" y="'+(H-8)+'" fill="#8e8e93" font-family="monospace" font-size="9">Good</text>'+
+      '<rect x="168" y="'+(H-17)+'" width="16" height="4" fill="#ff9f0a" rx="2"/><text x="188" y="'+(H-8)+'" fill="#8e8e93" font-family="monospace" font-size="9">Moderate</text>'+
+      '<rect x="250" y="'+(H-17)+'" width="16" height="4" fill="#ff453a" rx="2"/><text x="270" y="'+(H-8)+'" fill="#8e8e93" font-family="monospace" font-size="9">Poor</text>'+
+      '</svg>';
+  }catch(err){
+    el.innerHTML='<div class="map-err">Map rendering error: '+String(err&&err.message||err)+'<br>The rest of the analysis is unaffected.</div>';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  RESULTS
+// ══════════════════════════════════════════════════════════════════════════════
+function renderResults(){
+  var stats=G.stats,events=G.events,roughness=G.roughness;
+  var meta={car:document.getElementById('mCar').value||'Unknown',year:document.getElementById('mYear').value,mileage:document.getElementById('mMileage').value,condition:document.getElementById('mCondition').value,operator:document.getElementById('mOperator').value};
+  document.getElementById('resCar').textContent=meta.car+(meta.year?' · '+meta.year:'');
+  document.getElementById('resMeta').textContent=[meta.operator,meta.condition,meta.mileage?meta.mileage+'km':'',new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})].filter(Boolean).join(' · ');
+  document.getElementById('correctionBadge').innerHTML='<div class="correction-badge '+(G.corrPct>80?'applied':'partial')+'">⟳ '+(G.method==='OS sensor fusion'?'OS SENSOR FUSION':'ORIENTATION '+(G.corrPct>80?'CORRECTED':'PARTIAL '+G.corrPct+'%'))+'</div>';
+  document.getElementById('alignNote').innerHTML=(G.source==='LIVE'?'Recorded live on this device · ':'')+G.accN.toLocaleString()+' samples at 25 Hz'+(G.posPts?' + GPS ('+G.posPts.length+' fixes)':'')+' · gravity removal: '+G.method+(G.tsOk?'':' · ⚠ timestamps estimated');
+  renderVehicleHealth(stats.rawRms,stats.rmsTotal);
+  var vc=stats.rmsTotal>3?'alert':stats.rmsTotal>1.5?'warn':'good';
+  document.getElementById('statRow').innerHTML=
+    '<div class="stat-card '+vc+'"><div class="stat-val">'+stats.rmsTotal.toFixed(2)+'</div><div class="stat-key">Clean RMS m/s²</div></div>'+
+    '<div class="stat-card '+(stats.peak>8?'alert':stats.peak>4?'warn':'')+'"><div class="stat-val">'+stats.peak.toFixed(2)+'</div><div class="stat-key">Peak m/s²</div></div>'+
+    '<div class="stat-card"><div class="stat-val">'+stats.domFreq+'</div><div class="stat-key">Dom Hz</div></div>'+
+    '<div class="stat-card"><div class="stat-val">'+events.length+'</div><div class="stat-key">Detected Events</div></div>';
+  redrawTimeChart();
+  if(charts.rough)charts.rough.destroy();
+  charts.rough=new Chart(document.getElementById('chartRoughness').getContext('2d'),{
+    type:'bar',
+    data:{labels:roughness.map(function(s){return s.t.toFixed(0)+'s';}),
+      datasets:[{data:roughness.map(function(s){return s.rms.toFixed(3);}),backgroundColor:roughness.map(function(s){return roughnessColor(s.score,0.8);}),borderRadius:2,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:'#636366',maxTicksLimit:12,font:{family:'DM Mono',size:9}},grid:{color:'#3a3a3c'}},
+              y:{ticks:{color:'#636366',font:{family:'DM Mono',size:9}},grid:{color:'#3a3a3c'},title:{display:true,text:'m/s²',color:'#636366',font:{family:'DM Mono',size:9}}}}}
+  });
+  if(charts.speed)charts.speed.destroy();
+  var scb=document.getElementById('speedChartBlock');
+  if(stats.speedCorr.length>1){
+    scb.innerHTML='<div class="chart-title">Speed vs Vibration Intensity (filtered)</div><div class="chart-wrap"><canvas id="chartSpeed"></canvas></div>';
+    charts.speed=new Chart(document.getElementById('chartSpeed').getContext('2d'),{
+      type:'bar',
+      data:{labels:stats.speedCorr.map(function(b){return b.speed+' km/h';}),
+        datasets:[{data:stats.speedCorr.map(function(b){return b.rms.toFixed(3);}),backgroundColor:stats.speedCorr.map(function(b){return b.rms>3?'rgba(255,69,58,0.7)':b.rms>1.5?'rgba(255,159,10,0.7)':'rgba(48,209,88,0.7)';}),borderRadius:4}]},
+      options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},
+        scales:{x:{ticks:{color:'#636366',font:{family:'DM Mono',size:9}},grid:{color:'#3a3a3c'}},y:{ticks:{color:'#636366',font:{family:'DM Mono',size:9}},grid:{color:'#3a3a3c'}}}}
+    });
+  } else {scb.innerHTML='<div style="padding:24px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--text3)">No speed data — enable GPS during recording for the speed correlation chart</div>';}
+  // Road score
+  var rscores=roughness.map(function(s){return s.rms;});
+  var goodPct=Math.round(roughness.filter(function(s){return s.rms<2;}).length/roughness.length*100);
+  var modPct=Math.round(roughness.filter(function(s){return s.rms>=2&&s.rms<4;}).length/roughness.length*100);
+  var poorPct=Math.round(roughness.filter(function(s){return s.rms>=4;}).length/roughness.length*100);
+  var avgRms=(rscores.reduce(function(a,b){return a+b;},0)/rscores.length).toFixed(2);
+  var overall=+avgRms<2?{label:'Good',col:'#30d158'}:+avgRms<4?{label:'Moderate',col:'#ff9f0a'}:{label:'Poor',col:'#ff453a'};
+  document.getElementById('roadScore').innerHTML=
+    '<div class="rs-card"><div class="rs-val" style="color:'+overall.col+'">'+overall.label+'</div><div class="rs-key">Road Overall</div><div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:4px">'+avgRms+' m/s² avg</div></div>'+
+    '<div class="rs-card"><div class="rs-val" style="color:#30d158">'+goodPct+'%</div><div class="rs-key">Good</div><div class="rs-bar"><div class="rs-fill" style="width:'+goodPct+'%;background:#30d158"></div></div></div>'+
+    '<div class="rs-card"><div class="rs-val" style="color:#ff9f0a">'+modPct+'%</div><div class="rs-key">Moderate</div><div class="rs-bar"><div class="rs-fill" style="width:'+modPct+'%;background:#ff9f0a"></div></div></div>'+
+    '<div class="rs-card"><div class="rs-val" style="color:#ff453a">'+poorPct+'%</div><div class="rs-key">Poor</div><div class="rs-bar"><div class="rs-fill" style="width:'+poorPct+'%;background:#ff453a"></div></div></div>';
+  var mx=Math.max(stats.rmsX,stats.rmsY,stats.rmsZ);
+  document.getElementById('axisGrid').innerHTML=['X','Y','Z'].map(function(ax,i){
+    var v=[stats.rmsX,stats.rmsY,stats.rmsZ][i],pct=Math.round(v/mx*100);
+    var col=ax==='X'?'#0a84ff':ax==='Y'?'#ff9f0a':'#30d158';
+    return'<div class="axis-card"><div class="axis-label">'+ax+' AXIS</div><div class="axis-val">'+v.toFixed(3)+'</div><div style="font-family:var(--mono);font-size:9px;color:var(--text3)">m/s²</div><div class="axis-bar"><div class="axis-fill" style="width:'+pct+'%;background:'+col+'"></div></div></div>';
+  }).join('');
+  renderEvents();
+  document.getElementById('diagCard').innerHTML=buildDiagnostic(stats,events,roughness);
+}
+
+function renderEvents(){
+  var events=G.events;
+  document.getElementById('evCount').textContent='('+events.length+')';
+  document.getElementById('eventList').innerHTML=events.length===0
+    ?'<div class="no-events">No confirmed road events detected — try lowering the sensitivity sliders above</div>'
+    :events.map(function(ev){
+      var detail=ev.type==='tunnel'
+        ?'t='+ev.time.toFixed(1)+'s · GPS dropout ~'+ev.duration+'s'
+        :ev.type==='bridge'
+        ?'t='+ev.time.toFixed(1)+'s · ~'+ev.altChange+'m elevation'+(ev.speed?' · '+ev.speed+' km/h':'')
+        :ev.type==='dots'
+        ?'t='+ev.time.toFixed(1)+'s · '+ev.count+' regular impacts'+(ev.speed?' · '+ev.speed+' km/h':'')
+        :'t='+ev.time.toFixed(1)+'s · ~'+ev.dispCm+'cm displacement'+(ev.speed?' · '+ev.speed+' km/h':'');
+      var mag=(ev.type==='bridge')?(ev.altChange?ev.altChange+'m':'—')
+             :(ev.type==='tunnel')?'GPS'
+             :((ev.peak||0).toFixed(2)+' m/s²');
+      var conf=ev.conf?'<span class="event-conf" style="border:1px solid currentColor">'+ev.conf+'</span>':'';
+      return'<div class="event-item '+ev.type+'">'+
+        '<div class="event-icon">'+ev.icon+'</div>'+
+        '<div><div class="event-type">'+ev.label+conf+'</div><div class="event-detail">'+detail+'</div></div>'+
+        '<div class="event-mag">'+mag+'</div></div>';
+    }).join('');
+}
+
+function buildDiagnostic(stats,events,roughness){
+  var items=[],tier=getHealthTier(stats.rawRms),icon,title,sub;
+  if(stats.rawRms<2){icon='✅';title='Good Vehicle Condition';sub='Vibration within healthy range';}
+  else if(stats.rawRms<4){icon='⚠️';title='Monitor Vehicle Vibration';sub='Slightly elevated — worth tracking';}
+  else if(stats.rawRms<7){icon='🔧';title='Attention Needed';sub='Elevated vibration — inspection recommended';}
+  else{icon='🔴';title='Poor Vehicle Condition';sub='Raw vibration '+stats.rawRms.toFixed(2)+' m/s² — well above healthy threshold of 2 m/s²';}
+  items.push({c:tier.color,t:'Vehicle baseline: '+stats.rawRms.toFixed(2)+' m/s² raw RMS (healthy <2 m/s²). Clean vibration after gravity removal: '+stats.rmsTotal.toFixed(2)+' m/s².'});
+  var freq=parseFloat(stats.domFreq);
+  if(freq>0&&!isNaN(freq)){
+    if(freq>=10&&freq<=30)items.push({c:'#ff9f0a',t:'Dominant frequency '+stats.domFreq+' Hz — consistent with engine-related vibration. Inspect engine and transmission mounts.'});
+    else if(freq>=4)items.push({c:'#ff9f0a',t:'Frequency '+stats.domFreq+' Hz — likely drivetrain related. Possible driveshaft imbalance or worn CV joint.'});
+    else items.push({c:'#0a84ff',t:'Low frequency '+stats.domFreq+' Hz — suspension inputs or road texture dominant.'});
+  }
+  if(stats.speedCorr.length>2){
+    var rl=stats.speedCorr.map(function(b){return b.rms;});
+    var variation=(Math.max.apply(null,rl)-Math.min.apply(null,rl))/Math.max.apply(null,rl);
+    var inc=rl.filter(function(v,i){return i>0&&v>rl[i-1];}).length>rl.length/2;
+    if(inc)items.push({c:'#ff453a',t:'Clean vibration increases with speed — consistent with wheel imbalance, tire issue, or driveshaft imbalance. Recommend wheel balancing first.'});
+    else if(variation<0.25)items.push({c:'#ff9f0a',t:'Clean vibration consistent across all speeds ('+Math.round(variation*100)+'% variation). Rules out wheel/drivetrain balance. Most likely: worn engine or transmission mounts, deteriorated suspension bushings.'});
+    else items.push({c:'#ff9f0a',t:'Mixed speed correlation — combination of mechanical wear and road surface inputs likely.'});
+  }
+  var mx=stats.rmsX>stats.rmsY&&stats.rmsX>stats.rmsZ?'X (lateral)':stats.rmsY>stats.rmsZ?'Y (longitudinal)':'Z (vertical)';
+  items.push({c:'#636366',t:'Dominant axis: '+mx+'. '+(mx.indexOf('Z')>=0?'Vertical — road inputs and suspension.':mx.indexOf('X')>=0?'Lateral — may indicate engine rocking on worn mounts.':'Longitudinal — may suggest drivetrain or braking vibration.')});
+  if(roughness&&roughness.length){
+    var avgRms=(roughness.map(function(s){return s.rms;}).reduce(function(a,b){return a+b;},0)/roughness.length).toFixed(2);
+    var poorPct=Math.round(roughness.filter(function(s){return s.rms>=4;}).length/roughness.length*100);
+    items.push({c:poorPct>30?'#ff9f0a':'#30d158',t:'Road surface: average '+avgRms+' m/s² clean RMS. '+(poorPct>30?poorPct+'% of route above poor threshold — road quality contributing.':'Road surface generally good — vehicle condition is primary vibration source.')});
+  }
+  var ph=events.filter(function(e){return e.type==='pothole';}).length;
+  var bm=events.filter(function(e){return e.type==='bump';}).length;
+  var dt=events.filter(function(e){return e.type==='dots';}).length;
+  var bridges=events.filter(function(e){return e.type==='bridge';});
+  var tunnels=events.filter(function(e){return e.type==='tunnel';});
+  if(ph+bm>0){
+    items.push({c:'#636366',t:(ph+bm)+' confirmed road impact event'+(ph+bm>1?'s':'')+': '+ph+' pothole'+(ph!==1?'s':'')+' (wheel-drop onset), '+bm+' speed bump'+(bm!==1?'s':'')+' (lift onset). Confirmed via spike isolation + displacement gate + onset polarity.'});
+  } else {
+    items.push({c:'#30d158',t:'No discrete road impacts confirmed above the current displacement threshold. Elevated vibration comes from vehicle mechanical condition and road texture, not distinct hazards.'});
+  }
+  if(dt>0)items.push({c:'#ffd60a',t:dt+' periodic-impact pattern'+(dt>1?'s':'')+" classified as Botts' dots / rumble strips — regular spacing with low displacement per impact, excluded from pothole/bump counts."});
+  if(bridges.length>0)items.push({c:'#0a84ff',t:bridges.length+' bridge or elevation change'+(bridges.length>1?'s':'')+' detected via GPS altitude analysis.'});
+  if(tunnels.length>0)items.push({c:'#a855f7',t:tunnels.length+' possible tunnel or GPS obstruction'+(tunnels.length>1?'s':'')+' detected via GPS dropout analysis.'});
+  return'<div class="diag-card"><div class="diag-header"><div class="diag-icon">'+icon+'</div><div><div class="diag-title">'+title+'</div><div class="diag-sub">'+sub+'</div></div></div>'+
+    '<div class="diag-items">'+items.map(function(it){return'<div class="diag-item"><div class="diag-bullet" style="background:'+it.c+'"></div><div class="diag-text">'+it.t+'</div></div>';}).join('')+'</div></div>';
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  EXPORT — save the live recording as MATLAB-compatible CSVs (zip-free: one file)
+// ══════════════════════════════════════════════════════════════════════════════
+function downloadSessionCSV(){
+  if(!G){alert('Nothing to export');return;}
+  var lines=['t_s,acc_x,acc_y,acc_z,clean_x,clean_y,clean_z'+(G.lat?',lat,lon,speed_ms,alt_m':'')];
+  for(var i=0;i<G.t.length;i++){
+    var row=[G.t[i].toFixed(3),G.rawX[i].toFixed(4),G.rawY[i].toFixed(4),G.rawZ[i].toFixed(4),
+             G.cax[i].toFixed(4),G.cay[i].toFixed(4),G.caz[i].toFixed(4)];
+    if(G.lat)row.push(G.lat[i].toFixed(6),G.lon[i].toFixed(6),(G.speed?G.speed[i]:0).toFixed(2),(G.alt?G.alt[i]:0).toFixed(1));
+    lines.push(row.join(','));
+  }
+  var blob=new Blob([lines.join('\n')],{type:'text/csv'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='vibra_session_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.csv';
+  a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MISC
+// ══════════════════════════════════════════════════════════════════════════════
+function setProgress(pct,label){document.getElementById('progressWrap').classList.add('show');document.getElementById('progressFill').style.width=pct+'%';document.getElementById('progressLabel').textContent=label;}
+
+var FIELDS=['mCar','mYear','mMileage','mCondition','mOperator','mNotes'];
+function saveCarDetails(){var d={};FIELDS.forEach(function(id){var el=document.getElementById(id);d[id]=el?el.value:'';});try{localStorage.setItem('vibraCarDetails',JSON.stringify(d));}catch(e){}}
+function loadCarDetails(){try{var d=JSON.parse(localStorage.getItem('vibraCarDetails')||'{}');FIELDS.forEach(function(id){if(d[id]){var el=document.getElementById(id);if(el)el.value=d[id];}});}catch(e){}}
+window.addEventListener('DOMContentLoaded',function(){loadCarDetails();FIELDS.forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('change',saveCarDetails);});});
+
+function resetAll(){
+  slots={acc:null,gyr:null,pos:null};G=null;showOverlay=false;
+  R.samples=[];R.gps=[];
+  Object.values(charts).forEach(function(c){try{c.destroy();}catch(e){}});charts={};
+  ['acc','gyr','pos'].forEach(function(k){document.getElementById('slot_'+k).classList.remove('loaded');document.getElementById('fn_'+k).textContent='';document.getElementById('badge_'+k).className='slot-badge '+(k==='pos'?'badge-opt':'badge-req');document.getElementById('badge_'+k).textContent=k==='pos'?'OPT':'REQ';});
+  document.getElementById('btnAnalyze').disabled=true;
+  document.getElementById('btnAnalyzeRec').disabled=true;
+  document.getElementById('rElapsed').textContent='0:00';
+  document.getElementById('rSamples').textContent='0';
+  document.getElementById('rHz').textContent='—';
+  document.getElementById('rGps').textContent='—';
+  document.getElementById('liveFill').style.width='0%';
+  document.getElementById('liveLabel').textContent='idle';
+  document.getElementById('tabs').style.display='';
+  document.getElementById('panel_rec').style.display='';
+  document.getElementById('panel_csv').style.display='';
+  showTab('rec');
+  document.getElementById('results').classList.remove('show');
+  document.getElementById('progressWrap').classList.remove('show');
+  document.getElementById('progressFill').style.width='0%';
+}
+</script>
+</body>
+</html>
