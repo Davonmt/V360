@@ -731,7 +731,40 @@ function computeStats(cax,cay,caz,speed,t,rawAx,rawAy,rawAz){
   }).filter(Boolean):[];
   var cr=0;for(var i3=1;i3<caz.length;i3++)if(caz[i3-1]*caz[i3]<0)cr++;
   var domFreq=isFinite(cr/(2*dur))?(cr/(2*dur)).toFixed(1):'—';
+  // ── Vehicle-health signals that resist road contamination ──
+  // Rolling 3 s RMS of clean magnitude
+  var win=Math.max(1,Math.round(fs*3));
+  var roll=new Float64Array(n),sq=0;
+  for(var r1=0;r1<n;r1++){sq+=mag[r1]*mag[r1];if(r1>=win)sq-=mag[r1-win]*mag[r1-win];roll[r1]=Math.sqrt(sq/Math.min(r1+1,win));}
+  // Idle segments (engine running, car stopped): pure vehicle vibration, no road input
+  var idleVals=[],movingRoll=[];
+  if(speed){
+    for(var r2=0;r2<n;r2++){
+      if(speed[r2]<0.5)idleVals.push(mag[r2]);
+      else if(speed[r2]>1.5)movingRoll.push(roll[r2]);
+    }
+  } else {
+    for(var r3=0;r3<n;r3++)movingRoll.push(roll[r3]);
+  }
+  var idleRms=null;
+  if(idleVals.length>fs*15){
+    var isq=0;for(var r4=0;r4<idleVals.length;r4++)isq+=idleVals[r4]*idleVals[r4];
+    idleRms=Math.sqrt(isq/idleVals.length);
+  }
+  // Moving baseline: 25th percentile of rolling RMS while moving — the car's
+  // vibration floor on its smoothest road stretches (potholes can't inflate it)
+  var baselineRms=null;
+  if(movingRoll.length>fs*20){
+    movingRoll.sort(function(a,b){return a-b;});
+    baselineRms=movingRoll[Math.floor(movingRoll.length*0.25)];
+  } else if(n>fs*20){
+    var allRoll=Array.from(roll).sort(function(a,b){return a-b;});
+    baselineRms=allRoll[Math.floor(allRoll.length*0.25)];
+  } else {
+    baselineRms=rms(mag);
+  }
   return{rmsX:rms(cax),rmsY:rms(cay),rmsZ:rms(caz),rmsTotal:rms(mag),rawRms:rawRms,
+    idleRms:idleRms,baselineRms:baselineRms,
     peak:Math.max.apply(null,mag),duration:dur,hz:(n/dur).toFixed(1),domFreq:domFreq,
     samples:n,speedCorr:speedCorr,mag:mag,rawMag:rawMag,t:t,fs:fs};
 }
@@ -1117,29 +1150,47 @@ function computeTraffic(t,speed,lat,lon){
 // ══════════════════════════════════════════════════════════════════════════════
 //  HEALTH / RENDERING
 // ══════════════════════════════════════════════════════════════════════════════
+// Health tiers on the MOVING BASELINE (25th-percentile clean vibration while
+// moving) — road impacts cannot inflate it. Thresholds are provisional and
+// will be calibrated against fleet data.
 var HEALTH=[
-  {max:2.0,cls:'healthy',label:'Healthy',color:'#30d158',desc:'Vehicle vibration within normal range. No mechanical concerns indicated.'},
-  {max:4.0,cls:'monitor',label:'Monitor',color:'#ff9f0a',desc:'Slightly elevated. Early signs of mount or bushing wear possible.'},
-  {max:7.0,cls:'attention',label:'Attention Needed',color:'#ff6b35',desc:'Elevated baseline. Worn engine/transmission mounts or suspension bushings likely. Recommend inspection.'},
-  {max:999,cls:'poor',label:'Poor Condition',color:'#ff453a',desc:'High vibration baseline. Significant mechanical wear detected. Inspection recommended soon.'}
+  {max:0.6,cls:'healthy',label:'Healthy',color:'#30d158',desc:'Vibration floor within normal range for a well-maintained vehicle. No mechanical concerns indicated.'},
+  {max:1.2,cls:'monitor',label:'Monitor',color:'#ff9f0a',desc:'Vibration floor slightly elevated. Early mount or bushing wear possible — worth tracking over time.'},
+  {max:2.2,cls:'attention',label:'Attention Needed',color:'#ff6b35',desc:'Elevated vibration floor even on smooth stretches. Worn engine/transmission mounts or suspension bushings likely. Recommend inspection.'},
+  {max:999,cls:'poor',label:'Poor Condition',color:'#ff453a',desc:'High vibration floor on smooth road — significant mechanical wear indicated. Inspection recommended soon.'}
 ];
-function getHealthTier(rms){for(var i=0;i<HEALTH.length;i++){if(rms<=HEALTH[i].max)return HEALTH[i];}return HEALTH[HEALTH.length-1];}
+function getHealthTier(v){for(var i=0;i<HEALTH.length;i++){if(v<=HEALTH[i].max)return HEALTH[i];}return HEALTH[HEALTH.length-1];}
+// Idle tiers: engine + mounts only, zero road input
+var IDLE_TIERS=[
+  {max:0.15,color:'#30d158',label:'smooth'},
+  {max:0.35,color:'#ff9f0a',label:'slightly rough'},
+  {max:0.7,color:'#ff6b35',label:'rough — check mounts'},
+  {max:999,color:'#ff453a',label:'very rough — inspect engine/mounts'}
+];
+function getIdleTier(v){for(var i=0;i<IDLE_TIERS.length;i++){if(v<=IDLE_TIERS[i].max)return IDLE_TIERS[i];}return IDLE_TIERS[IDLE_TIERS.length-1];}
 
-function renderVehicleHealth(rawRms,cleanRms){
-  var tier=getHealthTier(rawRms);
-  var pct=Math.min(100,Math.round(rawRms/12*100));
+function renderVehicleHealth(stats){
+  var tier=getHealthTier(stats.baselineRms);
+  var pct=Math.min(100,Math.round(stats.baselineRms/3*100));
+  var idleHtml;
+  if(stats.idleRms!==null){
+    var it=getIdleTier(stats.idleRms);
+    idleHtml='<div class="health-mini"><div class="health-mini-val" style="color:'+it.color+'">'+stats.idleRms.toFixed(2)+'</div><div class="health-mini-key">IDLE RMS m/s²</div><div class="health-mini-sub">engine &amp; mounts only, no road input — '+it.label+'</div></div>';
+  } else {
+    idleHtml='<div class="health-mini"><div class="health-mini-val" style="color:var(--text3)">—</div><div class="health-mini-key">IDLE RMS m/s²</div><div class="health-mini-sub">no idle segment captured — sit stopped with engine running ~30 s during recording</div></div>';
+  }
   document.getElementById('vehicleHealth').innerHTML=
     '<div class="health-split">'+
-      '<div class="health-mini"><div class="health-mini-val" style="color:'+tier.color+'">'+rawRms.toFixed(2)+'</div><div class="health-mini-key">RAW RMS m/s²</div><div class="health-mini-sub">gravity included — vehicle health indicator</div></div>'+
-      '<div class="health-mini"><div class="health-mini-val" style="color:#30d158">'+cleanRms.toFixed(2)+'</div><div class="health-mini-key">CLEAN RMS m/s²</div><div class="health-mini-sub">gravity removed — road & vibration analysis</div></div>'+
+      idleHtml+
+      '<div class="health-mini"><div class="health-mini-val" style="color:'+tier.color+'">'+stats.baselineRms.toFixed(2)+'</div><div class="health-mini-key">MOVING BASELINE m/s²</div><div class="health-mini-sub">vibration floor on smoothest stretches — road impacts excluded</div></div>'+
     '</div>'+
     '<div class="health-banner '+tier.cls+'">'+
       '<div><div class="hb-label">Vehicle Vibration Health</div>'+
       '<div class="hb-verdict" style="color:'+tier.color+'">'+tier.label+'</div>'+
-      '<div class="hb-desc">'+tier.desc+'</div>'+
+      '<div class="hb-desc">'+tier.desc+' <span style="color:var(--text3)">Thresholds are provisional — being calibrated with real fleet data.</span></div>'+
       '<div class="hb-gauge"><div class="hb-gauge-fill" style="width:'+pct+'%;background:'+tier.color+'"></div></div>'+
-      '<div class="hb-ticks"><span style="color:#30d158">0 — Healthy</span><span style="color:#ff9f0a">2</span><span style="color:#ff6b35">4</span><span style="color:#ff453a">7 — Poor — 12+</span></div></div>'+
-      '<div><div class="hb-val" style="color:'+tier.color+'">'+rawRms.toFixed(1)+'</div><div class="hb-unit">m/s² raw</div></div>'+
+      '<div class="hb-ticks"><span style="color:#30d158">0 — Healthy</span><span style="color:#ff9f0a">0.6</span><span style="color:#ff6b35">1.2</span><span style="color:#ff453a">2.2 — Poor — 3+</span></div></div>'+
+      '<div><div class="hb-val" style="color:'+tier.color+'">'+stats.baselineRms.toFixed(2)+'</div><div class="hb-unit">m/s² baseline</div></div>'+
     '</div>';
 }
 
@@ -1277,7 +1328,7 @@ function renderResults(){
   document.getElementById('resMeta').textContent=[meta.operator,meta.condition,meta.mileage?meta.mileage+'km':'',new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})].filter(Boolean).join(' · ');
   document.getElementById('correctionBadge').innerHTML='<div class="correction-badge '+(G.corrPct>80?'applied':'partial')+'">⟳ '+(G.method==='OS sensor fusion'?'OS SENSOR FUSION':'ORIENTATION '+(G.corrPct>80?'CORRECTED':'PARTIAL '+G.corrPct+'%'))+'</div>';
   document.getElementById('alignNote').innerHTML=(G.source==='LIVE'?'Recorded live on this device · ':'')+G.accN.toLocaleString()+' samples at 25 Hz'+(G.posPts?' + GPS ('+G.posPts.length+' fixes)':'')+' · gravity removal: '+G.method+((G.gaps&&G.gaps.length)?' · ⚠ '+G.gaps.length+' interruption'+(G.gaps.length>1?'s':'')+' (calls/app switches)':'')+(G.tsOk?'':' · ⚠ timestamps estimated');
-  renderVehicleHealth(stats.rawRms,stats.rmsTotal);
+  renderVehicleHealth(stats);
   var vc=stats.rmsTotal>3?'alert':stats.rmsTotal>1.5?'warn':'good';
   document.getElementById('statRow').innerHTML=
     '<div class="stat-card '+vc+'"><div class="stat-val">'+stats.rmsTotal.toFixed(2)+'</div><div class="stat-key">Clean RMS m/s²</div></div>'+
@@ -1374,12 +1425,19 @@ function renderEvents(){
 }
 
 function buildDiagnostic(stats,events,roughness){
-  var items=[],tier=getHealthTier(stats.rawRms),icon,title,sub;
-  if(stats.rawRms<2){icon='✅';title='Good Vehicle Condition';sub='Vibration within healthy range';}
-  else if(stats.rawRms<4){icon='⚠️';title='Monitor Vehicle Vibration';sub='Slightly elevated — worth tracking';}
-  else if(stats.rawRms<7){icon='🔧';title='Attention Needed';sub='Elevated vibration — inspection recommended';}
-  else{icon='🔴';title='Poor Vehicle Condition';sub='Raw vibration '+stats.rawRms.toFixed(2)+' m/s² — well above healthy threshold of 2 m/s²';}
-  items.push({c:tier.color,t:'Vehicle baseline: '+stats.rawRms.toFixed(2)+' m/s² raw RMS (healthy <2 m/s²). Clean vibration after gravity removal: '+stats.rmsTotal.toFixed(2)+' m/s².'});
+  var items=[],tier=getHealthTier(stats.baselineRms),icon,title,sub;
+  var b=stats.baselineRms;
+  if(b<0.6){icon='✅';title='Good Vehicle Condition';sub='Vibration floor within healthy range';}
+  else if(b<1.2){icon='⚠️';title='Monitor Vehicle Vibration';sub='Baseline slightly elevated — worth tracking';}
+  else if(b<2.2){icon='🔧';title='Attention Needed';sub='Elevated vibration floor — inspection recommended';}
+  else{icon='🔴';title='Poor Vehicle Condition';sub='Baseline '+b.toFixed(2)+' m/s² on smooth stretches — well above healthy threshold of 0.6 m/s²';}
+  items.push({c:tier.color,t:'Moving baseline: '+b.toFixed(2)+' m/s² — the vibration floor on the smoothest 25% of the drive, so potholes and rough patches cannot inflate it (healthy <0.6 m/s², provisional). Whole-drive average: '+stats.rmsTotal.toFixed(2)+' m/s² (includes road impacts).'});
+  if(stats.idleRms!==null){
+    var it=getIdleTier(stats.idleRms);
+    items.push({c:it.color,t:'Idle vibration: '+stats.idleRms.toFixed(2)+' m/s² with zero road input — this is pure engine and mount condition ('+it.label+'). The most reliable vehicle-health number in this report.'});
+  } else {
+    items.push({c:'#636366',t:'No idle segment captured. For the cleanest vehicle-health reading, sit stopped with the engine running for ~30 seconds during the recording — idle vibration measures engine and mounts with no road contamination.'});
+  }
   var freq=parseFloat(stats.domFreq);
   if(freq>0&&!isNaN(freq)){
     if(freq>=10&&freq<=30)items.push({c:'#ff9f0a',t:'Dominant frequency '+stats.domFreq+' Hz — consistent with engine-related vibration. Inspect engine and transmission mounts.'});
@@ -1460,7 +1518,7 @@ function downloadSessionCSV(){
 function downloadSessionJSON(){
   if(!G){alert('Nothing to export');return;}
   var r4=function(v){return Math.round(v*10000)/10000;};
-  var tier=getHealthTier(G.stats.rawRms);
+  var tier=getHealthTier(G.stats.baselineRms);
   var obj={
     format:'vibra-session',version:9,
     meta:{
@@ -1474,6 +1532,7 @@ function downloadSessionJSON(){
       method:G.method,samples:G.t.length,rateHz:25
     },
     summary:{
+      baselineRms:r4(G.stats.baselineRms),idleRms:G.stats.idleRms!==null?r4(G.stats.idleRms):null,
       rawRms:r4(G.stats.rawRms),cleanRms:r4(G.stats.rmsTotal),peak:r4(G.stats.peak),
       domFreqHz:G.stats.domFreq,healthTier:tier.label,
       rmsX:r4(G.stats.rmsX),rmsY:r4(G.stats.rmsY),rmsZ:r4(G.stats.rmsZ),
